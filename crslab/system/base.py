@@ -22,7 +22,8 @@ from fuzzywuzzy.process import extractOne
 from loguru import logger
 from nltk import word_tokenize
 from torch import optim
-from transformers import AdamW, Adafactor
+from torch.optim import AdamW
+from transformers import Adafactor
 
 from crslab.config import SAVE_PATH
 from crslab.evaluator import get_evaluator

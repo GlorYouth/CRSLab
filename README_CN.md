@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/rucaibox/crslab.svg)](https://github.com/rucaibox/crslab/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![arXiv](https://img.shields.io/badge/arXiv-CRSLab-%23B21B1B)](https://arxiv.org/abs/2101.00939)
-[![Documentation Status](https://readthedocs.org/projects/crslab/badge/?version=latest)](https://crslab.readthedocs.io/en/latest/?badge=latest)geometric
+[![Documentation Status](https://readthedocs.org/projects/crslab/badge/?version=latest)](https://crslab.readthedocs.io/en/latest/?badge=latest)
 
 [论文](https://arxiv.org/pdf/2101.00939.pdf) | [文档](https://crslab.readthedocs.io/en/latest/?badge=latest)
 | [English Version](./README.md)
@@ -58,17 +58,10 @@ CRSLab 要求 torch 版本为1.8，如果你想在 GPU 上运行 CRSLab，请确
 使用 PyTorch [本地安装](https://pytorch.org/get-started/locally/)命令或者[先前版本安装](https://pytorch.org/get-started/previous-versions/)命令安装 PyTorch，比如在 Linux 和 Windows 下：
 
 ```bash
-conda create -n crslab python=3.6
+conda create -n crslab python=3.12
 conda activate crslab
 conda install gcc_linux-64 gxx_linux-64 
-# CUDA 10.2
-conda install pytorch==1.8.0 torchvision==0.9.0 torchaudio==0.8.0 cudatoolkit=10.2 -c pytorch
-
-# CUDA 11.1
-conda install pytorch==1.8.0 torchvision==0.9.0 torchaudio==0.8.0 cudatoolkit=11.1 -c pytorch -c conda-forge
-
-# CPU Only
-conda install pytorch==1.8.0 torchvision==0.9.0 torchaudio==0.8.0 cpuonly -c pytorch
+pip install torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0 --index-url https://download.pytorch.org/whl/cu126
 ```
 
 安装完成后，如果你想在 GPU 上运行 CRSLab，请确保如下命令输出`True`：
@@ -93,7 +86,7 @@ $ python -c "import torch; print(torch.__version__)"
 
 ```bash
 $ python -c "import torch; print(torch.version.cuda)"
->>> 11.1
+>>> 12.6
 ```
 
 在Linux下：
@@ -102,7 +95,7 @@ $ python -c "import torch; print(torch.version.cuda)"
 
 ```bash
 pip install torch_geometric
-pip install torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-1.8.0+cu111.html
+pip install torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.7.0+cu126.html
 ```
 
 在其他系统下：
@@ -132,6 +125,9 @@ pip install -e .
 
 ```bash
 python run_crslab.py --config config/crs/kgsf/redial.yaml
+
+# 使用GPU
+python run_crslab.py --config config/crs/kgsf/redial.yaml -g 0
 ```
 
 系统将依次完成数据的预处理，以及各模块的训练、验证和测试，并得到指定的模型评测结果。

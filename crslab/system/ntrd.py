@@ -3,8 +3,6 @@
 # @Email  : oran_official@outlook.com
 
 import os
-from crslab.evaluator.metrics import gen
-from numpy.core.numeric import NaN
 
 import torch
 from loguru import logger
