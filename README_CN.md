@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/rucaibox/crslab.svg)](https://github.com/rucaibox/crslab/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![arXiv](https://img.shields.io/badge/arXiv-CRSLab-%23B21B1B)](https://arxiv.org/abs/2101.00939)
-[![Documentation Status](https://readthedocs.org/projects/crslab/badge/?version=latest)](https://crslab.readthedocs.io/en/latest/?badge=latest)
+[![Documentation Status](https://readthedocs.org/projects/crslab/badge/?version=latest)](https://crslab.readthedocs.io/en/latest/?badge=latest)geometric
 
 [论文](https://arxiv.org/pdf/2101.00939.pdf) | [文档](https://crslab.readthedocs.io/en/latest/?badge=latest)
 | [English Version](./README.md)
@@ -58,6 +58,9 @@ CRSLab 要求 torch 版本为1.8，如果你想在 GPU 上运行 CRSLab，请确
 使用 PyTorch [本地安装](https://pytorch.org/get-started/locally/)命令或者[先前版本安装](https://pytorch.org/get-started/previous-versions/)命令安装 PyTorch，比如在 Linux 和 Windows 下：
 
 ```bash
+conda create -n crslab python=3.6
+conda activate crslab
+conda install gcc_linux-64 gxx_linux-64 
 # CUDA 10.2
 conda install pytorch==1.8.0 torchvision==0.9.0 torchaudio==0.8.0 cudatoolkit=10.2 -c pytorch
 
@@ -98,7 +101,8 @@ $ python -c "import torch; print(torch.version.cuda)"
 安装相关的包：
 
 ```bash
-conda install pyg -c pyg
+pip install torch_geometric
+pip install torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-1.8.0+cu111.html
 ```
 
 在其他系统下：
