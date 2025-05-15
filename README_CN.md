@@ -49,7 +49,7 @@ CRSLab 可以在以下几种系统上运行：
 
 CRSLab 需要在 Python 3.6 或更高的环境下运行。
 
-CRSLab 要求 torch 版本在 1.4.0 及以上，如果你想在 GPU 上运行 CRSLab，请确保你的 CUDA 版本或者 CUDAToolkit 版本在 9.2 及以上。为保证 PyTorch Geometric 库的正常运行，请使用[链接](https://pytorch-geometric.com/whl/)所示的安装方式。
+CRSLab 要求 torch 版本为1.8以上，如果你想在 GPU 上运行 CRSLab，请确保你的 CUDA 版本或者 CUDAToolkit 版本在 10.2 及以上。为保证 PyTorch Geometric 库的正常运行，请使用[链接](https://pytorch-geometric.com/whl/)所示的安装方式。
 
 
 
@@ -58,11 +58,11 @@ CRSLab 要求 torch 版本在 1.4.0 及以上，如果你想在 GPU 上运行 CR
 使用 PyTorch [本地安装](https://pytorch.org/get-started/locally/)命令或者[先前版本安装](https://pytorch.org/get-started/previous-versions/)命令安装 PyTorch，比如在 Linux 和 Windows 下：
 
 ```bash
-# CUDA 10.1
-pip install torch==1.6.0+cu101 torchvision==0.7.0+cu101 -f https://download.pytorch.org/whl/torch_stable.html
-
-# CPU only
-pip install torch==1.6.0+cpu torchvision==0.7.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
+conda create -n crslab python=3.13
+conda activate crslab
+conda install gcc_linux-64 gxx_linux-64 cmake pip # cmake 和 pip 在 3.13 才需要
+conda install -c conda-forge gperftools # 在 3.13 才需要
+pip install torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0 --index-url https://download.pytorch.org/whl/cu126
 ```
 
 安装完成后，如果你想在 GPU 上运行 CRSLab，请确保如下命令输出`True`：
@@ -76,54 +76,40 @@ $ python -c "import torch; print(torch.cuda.is_available())"
 
 ### 安装 PyTorch Geometric
 
-确保安装的 PyTorch 版本至少为 1.4.0：
+确保安装的 PyTorch 版本至少为 1.8.0：
 
 ```bash
 $ python -c "import torch; print(torch.__version__)"
->>> 1.6.0
+>>> 1.8.0
 ```
 
 找到安装好的 PyTorch 对应的 CUDA 版本：
 
 ```bash
 $ python -c "import torch; print(torch.version.cuda)"
->>> 10.1
+>>> 12.6
 ```
+
+在Linux下：
 
 安装相关的包：
 
 ```bash
-pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-${TORCH}+${CUDA}.html
-pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-${TORCH}+${CUDA}.html
-pip install torch-cluster -f https://pytorch-geometric.com/whl/torch-${TORCH}+${CUDA}.html
-pip install torch-spline-conv -f https://pytorch-geometric.com/whl/torch-${TORCH}+${CUDA}.html
-pip install torch-geometric
+pip install torch_geometric
+pip install torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.7.0+cu126.html
 ```
 
-其中`${CUDA}`和`${TORCH}`应使用确定的 CUDA 版本（`cpu`，`cu92`，`cu101`，`cu102`，`cu110`）和 PyTorch 版本（`1.4.0`，`1.5.0`，`1.6.0`，`1.7.0`）来分别替换。比如，对于 PyTorch 1.6.0 和 CUDA 10.1，输入：
+在其他系统下：
 
-```bash
-pip install torch-scatter -f https://pytorch-geometric.com/whl/torch-1.6.0+cu101.html
-pip install torch-sparse -f https://pytorch-geometric.com/whl/torch-1.6.0+cu101.html
-pip install torch-cluster -f https://pytorch-geometric.com/whl/torch-1.6.0+cu101.html
-pip install torch-spline-conv -f https://pytorch-geometric.com/whl/torch-1.6.0+cu101.html
-pip install torch-geometric
-```
-
-
+查看PyG[官方下载文档](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html)安装相关的包。
 
 ### 安装 CRSLab
 
-你可以通过 pip 来安装：
-
-```bash
-pip install crslab
-```
-
-也可以通过源文件进行进行安装：
+通过源文件进行进行安装：
 
 ```bash
 git clone https://github.com/RUCAIBox/CRSLab && cd CRSLab
+pip install -r requirements.txt
 pip install -e .
 ```
 
@@ -135,6 +121,9 @@ pip install -e .
 
 ```bash
 python run_crslab.py --config config/crs/kgsf/redial.yaml
+
+# 使用GPU
+python run_crslab.py --config config/crs/kgsf/redial.yaml -g 0
 ```
 
 系统将依次完成数据的预处理，以及各模块的训练、验证和测试，并得到指定的模型评测结果。

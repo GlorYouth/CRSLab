@@ -29,13 +29,13 @@ pretrain:
     name: Adam
     lr: !!float 1e-3
 rec:
-  epoch: 9
+  epoch: 2
   batch_size: 128
   optimizer:
     name: Adam
     lr: !!float 1e-3
 conv:
-  epoch: 90
+  epoch: 2
   batch_size: 128
   optimizer:
     name: Adam
