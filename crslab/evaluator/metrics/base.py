@@ -10,6 +10,7 @@
 import functools
 from abc import ABC, abstractmethod
 
+import numpy as np
 import torch
 from typing import Any, Union, List, Optional, Dict
 
@@ -90,9 +91,22 @@ class Metric(ABC):
     def as_number(cls, obj: TScalar) -> Union[int, float]:
         if isinstance(obj, torch.Tensor):
             obj_as_number: Union[int, float] = obj.item()
+        elif isinstance(obj, np.generic):  # 检查是否是 NumPy 的通用标量类型
+            obj_as_number = obj.item()  # 将 NumPy 类型转换为 Python 原生类型
         else:
             obj_as_number = obj  # type: ignore
-        assert isinstance(obj_as_number, int) or isinstance(obj_as_number, float)
+
+        # 断言前可以加一个类型检查和转换，确保进入断言的是 Python 原生类型
+        if not (isinstance(obj_as_number, int) or isinstance(obj_as_number, float)):
+            # 尝试将其他类似数字的类型（如 numpy.float64）转换为 float
+            try:
+                obj_as_number = float(obj_as_number)
+            except (TypeError, ValueError):
+                # 如果转换失败，保持原样，让断言来处理
+                pass
+
+        assert isinstance(obj_as_number, int) or isinstance(obj_as_number, float), \
+            f"Expected int or float, got {type(obj_as_number)} with value {obj_as_number}"
         return obj_as_number
 
     @classmethod

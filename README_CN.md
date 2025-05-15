@@ -47,9 +47,9 @@ CRSLab 可以在以下几种系统上运行：
 - Windows 10
 - macOS X
 
-CRSLab 需要在 Python 3.7 或更高的环境下运行。
+CRSLab 需要在 Python 3.6 或更高的环境下运行。
 
-CRSLab 要求 torch 版本为1.8，如果你想在 GPU 上运行 CRSLab，请确保你的 CUDA 版本或者 CUDAToolkit 版本在 10.2 及以上。为保证 PyTorch Geometric 库的正常运行，请使用[链接](https://pytorch-geometric.com/whl/)所示的安装方式。
+CRSLab 要求 torch 版本为1.8以上，如果你想在 GPU 上运行 CRSLab，请确保你的 CUDA 版本或者 CUDAToolkit 版本在 10.2 及以上。为保证 PyTorch Geometric 库的正常运行，请使用[链接](https://pytorch-geometric.com/whl/)所示的安装方式。
 
 
 
@@ -58,9 +58,10 @@ CRSLab 要求 torch 版本为1.8，如果你想在 GPU 上运行 CRSLab，请确
 使用 PyTorch [本地安装](https://pytorch.org/get-started/locally/)命令或者[先前版本安装](https://pytorch.org/get-started/previous-versions/)命令安装 PyTorch，比如在 Linux 和 Windows 下：
 
 ```bash
-conda create -n crslab python=3.12
+conda create -n crslab python=3.13
 conda activate crslab
-conda install gcc_linux-64 gxx_linux-64 
+conda install gcc_linux-64 gxx_linux-64 cmake pip # cmake 和 pip 在 3.13 才需要
+conda install -c conda-forge gperftools # 在 3.13 才需要
 pip install torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0 --index-url https://download.pytorch.org/whl/cu126
 ```
 
@@ -104,16 +105,11 @@ pip install torch_scatter torch_sparse torch_cluster torch_spline_conv -f https:
 
 ### 安装 CRSLab
 
-你可以通过 pip 来安装：
-
-```bash
-pip install crslab
-```
-
-也可以通过源文件进行进行安装：
+通过源文件进行进行安装：
 
 ```bash
 git clone https://github.com/RUCAIBox/CRSLab && cd CRSLab
+pip install -r requirements.txt
 pip install -e .
 ```
 

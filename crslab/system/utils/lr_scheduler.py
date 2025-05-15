@@ -3,6 +3,7 @@
 # @Email  : wxl1999@foxmail.com
 
 from abc import abstractmethod, ABC
+from typing import Literal
 
 # UPDATE:
 # @Time   : 2020/12/14
@@ -112,11 +113,11 @@ class ReduceLROnPlateau(LRScheduler):
     Scheduler that decays by a multiplicative rate when valid loss plateaus.
     """
 
-    def __init__(self, optimizer, mode='min', factor=0.1, patience=10, verbose=False, threshold=0.0001,
-                 threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, warmup_steps=0):
+    def __init__(self, optimizer, mode: Literal["min", "max"]= "min", factor=0.1, patience=10, threshold=0.0001,
+                 threshold_mode: Literal["rel", "abs"] = "rel", cooldown=0, min_lr=0, eps=1e-08, warmup_steps=0):
         super(ReduceLROnPlateau, self).__init__(optimizer, warmup_steps)
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, mode=mode, factor=factor,
-                                                              patience=patience, verbose=verbose, threshold=threshold,
+                                                              patience=patience, threshold=threshold,
                                                               threshold_mode=threshold_mode, cooldown=cooldown,
                                                               min_lr=min_lr, eps=eps)
 
