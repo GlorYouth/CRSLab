@@ -9,4 +9,4 @@ fuzzywuzzy<=0.18.0
 fasttext<=0.9.3
 scikit-learn<=1.6.1
 requests<=2.32.3
-setuptools<=79.0.1
+setuptools<80.0.0

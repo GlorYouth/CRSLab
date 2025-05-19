@@ -153,9 +153,9 @@ class KGSFSystem(BaseSystem):
 
     def train_conversation(self):
         if os.environ["CUDA_VISIBLE_DEVICES"] == '-1':
-            self.model.freeze_parameters()
+            self.model.named_parameters()
         else:
-            self.model.freeze_parameters()
+            self.model.named_parameters()
         self.init_optim(self.conv_optim_opt, self.model.parameters())
 
         for epoch in range(self.conv_epoch):

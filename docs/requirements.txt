@@ -1,0 +1,12 @@
+loguru<=0.7.3
+tqdm<=4.67.1
+numpy<=2.2.5
+torch-geometric<=2.6.1
+transformers<=4.51.3
+pyyaml<=6.0.2
+nltk<=3.9.1
+fuzzywuzzy<=0.18.0
+fasttext<=0.9.3
+scikit-learn<=1.6.1
+requests<=2.32.3
+setuptools<80.0.0

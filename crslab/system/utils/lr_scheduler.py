@@ -10,6 +10,8 @@ from typing import Literal
 # @Author : Xiaolei Wang
 # @Email  : wxl1999@foxmail.com
 import math
+from abc import abstractmethod, ABC
+from typing import Literal
 import numpy as np
 import torch
 from loguru import logger

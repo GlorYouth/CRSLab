@@ -10,6 +10,18 @@ except Exception:
 setup_requires = []
 
 install_requires = [
+    'loguru<=0.7.3',
+    'tqdm<=4.67.1',
+    'numpy<=2.2.5',
+    'torch-geometric<=2.6.1',
+    'transformers<=4.51.3',
+    'pyyaml<=6.0.2',
+    'nltk<=3.9.1',
+    'fuzzywuzzy<=0.18.0',
+    'fasttext<=0.9.3',
+    'scikit-learn<=1.6.1',
+    'requests<=2.32.3',
+    'setuptools<80.0.0'
 ]
 
 classifiers = [
@@ -24,7 +36,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 
 setup(
     name='crslab',
-    version='0.1.1',  # please remember to edit crslab/__init__.py in response, once updating the version
+    version='0.1.2',  # please remember to edit crslab/__init__.py in response, once updating the version
     author='CRSLabTeam',
     author_email='francis_kun_zhou@163.com',
     description='An Open-Source Toolkit for Building Conversational Recommender System(CRS)',
