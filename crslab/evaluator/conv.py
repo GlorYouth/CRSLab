@@ -7,8 +7,8 @@
 # @Author : Xiaolei Wang
 # @Email  : wxl1999@foxmail.com
 import os
-from collections import defaultdict
 import time
+from collections import defaultdict
 
 import fasttext
 from loguru import logger
@@ -33,6 +33,7 @@ class ConvEvaluator(BaseEvaluator):
         optim_metrics: the metrics to optimize in training
 
     """
+
     def __init__(self, tensorboard=False):
         super(ConvEvaluator, self).__init__()
         self.dist_set = defaultdict(set)
@@ -62,7 +63,9 @@ class ConvEvaluator(BaseEvaluator):
 
             for k in range(1, 5):
                 self.gen_metrics.add(f"bleu@{k}", BleuMetric.compute(hyp, refs, k))
-                for token in ngrams(hyp, k):
+                # split sentence to tokens here
+                hyp_token = hyp.split()
+                for token in ngrams(hyp_token, k):
                     self.dist_set[f"dist@{k}"].add(token)
             self.dist_cnt += 1
 

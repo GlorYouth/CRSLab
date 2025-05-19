@@ -9,6 +9,7 @@
 # @email   :   wxl1999@foxmail.com
 
 import os
+
 import torch
 from loguru import logger
 
@@ -16,8 +17,6 @@ from crslab.evaluator.metrics.base import AverageMetric
 from crslab.evaluator.metrics.gen import PPLMetric
 from crslab.system.base import BaseSystem
 from crslab.system.utils.functions import ind2txt
-from crslab.data.dataloader.utils import padded_tensor
-
 
 
 class KBRDSystem(BaseSystem):
@@ -76,8 +75,6 @@ class KBRDSystem(BaseSystem):
         assert stage in ('rec', 'conv')
         assert mode in ('train', 'valid', 'test')
 
-        batch["context_entities"] = padded_tensor(batch["context_entities"])
-
         for k, v in batch.items():
             if isinstance(v, torch.Tensor):
                 batch[k] = v.to(self.device)
@@ -135,6 +132,12 @@ class KBRDSystem(BaseSystem):
             self.evaluator.report(mode='test')
 
     def train_conversation(self):
+        if os.environ["CUDA_VISIBLE_DEVICES"] == '-1':
+            self.model.freeze_parameters()
+        elif len(os.environ["CUDA_VISIBLE_DEVICES"]) == 1:
+            self.model.freeze_parameters()
+        else:
+            self.model.module.freeze_parameters()
         self.init_optim(self.conv_optim_opt, self.model.parameters())
 
         for epoch in range(self.conv_epoch):

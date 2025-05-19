@@ -7,9 +7,15 @@
 # @Author : Kun Zhou, Xiaolei Wang
 # @Email  : francis_kun_zhou@163.com, wxl1999@foxmail.com
 
+# UPDATE:
+# @Time   : 2021/11/5
+# @Author : Zhipeng Zhao
+# @Email  : oran_official@outlook.com
+
 import os
 from abc import ABC, abstractmethod
-
+import numpy as np
+import random
 import nltk
 import torch
 from fuzzywuzzy.process import extractOne
@@ -57,9 +63,18 @@ class BaseSystem(ABC):
         if opt["gpu"] == [-1]:
             self.device = torch.device('cpu')
         elif len(opt["gpu"]) == 1:
-            self.device = torch.device('cuda', opt["gpu"][0])
+            self.device = torch.device('cuda')
         else:
             self.device = torch.device('cuda')
+        # seed
+        if 'seed' in opt:
+            seed = int(opt['seed'])
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+            logger.info(f'[Set seed] {seed}')
         # data
         if debug:
             self.train_dataloader = valid_dataloader

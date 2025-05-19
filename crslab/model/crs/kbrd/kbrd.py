@@ -72,7 +72,7 @@ class KBRDModel(BaseModel):
 
         """
         self.device = device
-        self.gpu = opt.get("gpu", -1)
+        self.gpu = opt.get("gpu", [-1])
         # vocab
         self.pad_token_idx = vocab['pad']
         self.start_token_idx = vocab['start']
@@ -174,7 +174,7 @@ class KBRDModel(BaseModel):
     def encode_user(self, entity_lists, kg_embedding):
         user_repr_list = []
         for entity_list in entity_lists:
-            if entity_list is not None:
+            if entity_list is None:
                 user_repr_list.append(torch.zeros(self.user_emb_dim, device=self.device))
                 continue
             user_repr = kg_embedding[entity_list]
@@ -248,7 +248,7 @@ class KBRDModel(BaseModel):
                     encoder_states = (encoder_states[0].repeat(beam, 1, 1),
                                       encoder_states[1].repeat(beam, 1, 1))
 
-                scores, _ = self.decoder(xs.reshape(len(sequences[0])*bsz, -1), encoder_states)
+                scores, _ = self.decoder(xs.reshape(len(sequences[0]) * bsz, -1), encoder_states)
                 scores = scores[:, -1:, :]
                 token_logits = F.linear(scores, self.token_embedding.weight)
                 user_logits = self.user_proj_2(torch.relu(self.user_proj_1(user_embedding))).unsqueeze(1)
@@ -308,3 +308,9 @@ class KBRDModel(BaseModel):
             return self.converse(batch, mode)
         if stage == "rec":
             return self.recommend(batch, mode)
+
+    def freeze_parameters(self):
+        freeze_models = [self.kg_encoder, self.kg_attn, self.rec_bias]
+        for model in freeze_models:
+            for p in model.parameters():
+                p.requires_grad = False

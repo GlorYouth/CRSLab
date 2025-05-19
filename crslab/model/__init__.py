@@ -7,8 +7,12 @@
 # @Author : Kun Zhou, Xiaolei Wang
 # @Email  : francis_kun_zhou@163.com, wxl1999@foxmail.com
 
-from loguru import logger
+# @Time   : 2021/10/06
+# @Author : Zhipeng Zhao
+# @Email  : oran_official@outlook.com
+
 import torch
+from loguru import logger
 
 from .conversation import *
 from .crs import *
@@ -36,7 +40,8 @@ Model_register_table = {
     'SASREC': SASRECModel,
     'GRU4REC': GRU4RECModel,
     'Popularity': PopularityModel,
-    'TextCNN': TextCNNModel
+    'TextCNN': TextCNNModel,
+    'NTRD': NTRDModel
 }
 
 
@@ -47,10 +52,14 @@ def get_model(config, model_name, device, vocab, side_data=None):
         if config.opt["gpu"] == [-1]:
             return model
         else:
-            if len(config.opt["gpu"]) > 1 and model_name == 'PMI':
-                logger.info(f'[PMI model does not support multi GPUs yet, using single GPU now]')
+            if len(config.opt["gpu"]) > 1:
+                if model_name == 'PMI' or model_name == 'KBRD':
+                    logger.info(f'[PMI/KBRD model does not support multi GPUs yet, using single GPU now]')
+                    return model.to(device)
+                else:
+                    return torch.nn.DataParallel(model, device_ids=config["gpu"])
+            else:
                 return model.to(device)
-            return torch.nn.DataParallel(model, device_ids=config["gpu"])
 
     else:
         raise NotImplementedError('Model [{}] has not been implemented'.format(model_name))

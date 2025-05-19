@@ -1,11 +1,6 @@
-# @Time   : 2020/11/22
-# @Author : Kun Zhou
-# @Email  : francis_kun_zhou@163.com
-
-# UPDATE:
-# @Time   : 2020/11/24, 2021/1/3
-# @Author : Kun Zhou, Xiaolei Wang
-# @Email  : francis_kun_zhou@163.com, wxl1999@foxmail.com
+# @Time   : 2021/10/05
+# @Author : Zhipeng Zhao
+# @Email  : oran_official@outlook.com
 
 import os
 
@@ -15,33 +10,19 @@ from loguru import logger
 from crslab.evaluator.metrics.base import AverageMetric
 from crslab.evaluator.metrics.gen import PPLMetric
 from crslab.system.base import BaseSystem
-from crslab.system.utils.functions import ind2txt
+from crslab.system.utils.functions import ind2slot,ind2txt_with_slots
 
 
-class KGSFSystem(BaseSystem):
-    """This is the system for KGSF model"""
-
+class NTRDSystem(BaseSystem):
+    """This is the system for NTRD model"""
     def __init__(self, opt, train_dataloader, valid_dataloader, test_dataloader, vocab, side_data, restore_system=False,
                  interact=False, debug=False, tensorboard=False):
-        """
-
-        Args:
-            opt (dict): Indicating the hyper parameters.
-            train_dataloader (BaseDataLoader): Indicating the train dataloader of corresponding dataset.
-            valid_dataloader (BaseDataLoader): Indicating the valid dataloader of corresponding dataset.
-            test_dataloader (BaseDataLoader): Indicating the test dataloader of corresponding dataset.
-            vocab (dict): Indicating the vocabulary.
-            side_data (dict): Indicating the side data.
-            restore_system (bool, optional): Indicating if we store system after training. Defaults to False.
-            interact (bool, optional): Indicating if we interact with system. Defaults to False.
-            debug (bool, optional): Indicating if we train in debug mode. Defaults to False.
-            tensorboard (bool, optional) Indicating if we monitor the training performance in tensorboard. Defaults to False. 
-
-        """
-        super(KGSFSystem, self).__init__(opt, train_dataloader, valid_dataloader, test_dataloader, vocab, side_data,
+        
+        super(NTRDSystem, self).__init__(opt, train_dataloader, valid_dataloader, test_dataloader, vocab, side_data,
                                          restore_system, interact, debug, tensorboard)
 
         self.ind2tok = vocab['ind2tok']
+        self.ind2movie = vocab['id2entity']
         self.end_token_idx = vocab['end']
         self.item_ids = side_data['item_entity_ids']
 
@@ -55,6 +36,8 @@ class KGSFSystem(BaseSystem):
         self.rec_batch_size = self.rec_optim_opt['batch_size']
         self.conv_batch_size = self.conv_optim_opt['batch_size']
 
+        # loss weight
+        self.gen_loss_weight = self.opt['gen_loss_weight']
     def rec_evaluate(self, rec_predict, item_label):
         rec_predict = rec_predict.cpu()
         rec_predict = rec_predict[:, self.item_ids]
@@ -65,15 +48,34 @@ class KGSFSystem(BaseSystem):
             item = self.item_ids.index(item)
             self.evaluator.rec_evaluate(rec_rank, item)
 
-    def conv_evaluate(self, prediction, response):
+    def conv_evaluate(self, prediction,movie_prediction,response,movie_response):
         prediction = prediction.tolist()
         response = response.tolist()
-        for p, r in zip(prediction, response):
-            p_str = ind2txt(p, self.ind2tok, self.end_token_idx)
-            r_str = ind2txt(r, self.ind2tok, self.end_token_idx)
-            self.evaluator.gen_evaluate(p_str, [r_str])
+        if movie_prediction != None:
+            movie_prediction = movie_prediction * (movie_prediction!=-1) 
+            movie_prediction = torch.masked_select(movie_prediction,(movie_prediction!=0)) 
+            movie_prediction = movie_prediction.tolist()
+            movie_prediction = ind2slot(movie_prediction,self.ind2movie)
+        if movie_response != None:
+            movie_response = movie_response * (movie_response!=-1)
+            movie_response = torch.masked_select(movie_response,(movie_response!=0))
+            movie_response = movie_response.tolist()
+            movie_response = ind2slot(movie_response,self.ind2movie)
 
+        for p, r in zip(prediction,response):
+            p_str = ind2txt_with_slots(p, movie_prediction, self.ind2tok, self.end_token_idx)
+            p_str = p_str[1:]
+            r_str = ind2txt_with_slots(r, movie_response, self.ind2tok, self.end_token_idx)
+            self.evaluator.gen_evaluate(p_str, [r_str])
+    
     def step(self, batch, stage, mode):
+        '''
+        converse:
+        context_tokens, context_entities, context_words, response,all_movies = batch
+
+        recommend
+        context_entities, context_words, entities, movie = batch
+        '''
         batch = [ele.to(self.device) for ele in batch]
         if stage == 'pretrain':
             info_loss = self.model.forward(batch, stage, mode)
@@ -98,19 +100,27 @@ class KGSFSystem(BaseSystem):
                 self.evaluator.optim_metrics.add("info_loss", AverageMetric(info_loss))
         elif stage == "conv":
             if mode != "test":
-                gen_loss, pred = self.model.forward(batch, stage, mode)
+                gen_loss,selection_loss,pred = self.model.forward(batch, stage, mode)
                 if mode == 'train':
-                    self.backward(gen_loss.sum())
-                else:
-                    self.conv_evaluate(pred, batch[-1])
+                    loss = self.gen_loss_weight * gen_loss + selection_loss
+                    self.backward(loss.sum())
+                    loss = loss.sum().item()
+                    self.evaluator.optim_metrics.add("gen_total_loss", AverageMetric(loss))
                 gen_loss = gen_loss.sum().item()
+                
+
                 self.evaluator.optim_metrics.add("gen_loss", AverageMetric(gen_loss))
                 self.evaluator.gen_metrics.add("ppl", PPLMetric(gen_loss))
+                selection_loss = selection_loss.sum().item()
+                self.evaluator.optim_metrics.add('sel_loss',AverageMetric(selection_loss))
+
             else:
-                pred = self.model.forward(batch, stage, mode)
-                self.conv_evaluate(pred, batch[-1])
+                pred,matching_pred,matching_logist = self.model.forward(batch, stage, mode)
+                self.conv_evaluate(pred,matching_pred,batch[-2],batch[-1])
         else:
             raise
+
+
 
     def pretrain(self):
         self.init_optim(self.pretrain_optim_opt, self.model.parameters())
@@ -150,12 +160,12 @@ class KGSFSystem(BaseSystem):
             for batch in self.test_dataloader.get_rec_data(self.rec_batch_size, shuffle=False):
                 self.step(batch, stage='rec', mode='test')
             self.evaluator.report(mode='test')
-
+    
     def train_conversation(self):
         if os.environ["CUDA_VISIBLE_DEVICES"] == '-1':
-            self.model.named_parameters()
+            self.model.freeze_parameters()
         else:
-            self.model.named_parameters()
+            self.model.module.freeze_parameters()
         self.init_optim(self.conv_optim_opt, self.model.parameters())
 
         for epoch in range(self.conv_epoch):
@@ -172,13 +182,13 @@ class KGSFSystem(BaseSystem):
                 for batch in self.valid_dataloader.get_conv_data(batch_size=self.conv_batch_size, shuffle=False):
                     self.step(batch, stage='conv', mode='val')
                 self.evaluator.report(epoch=epoch, mode='val')
-        # test
-        logger.info('[Test]')
-        with torch.no_grad():
-            self.evaluator.reset_metrics()
-            for batch in self.test_dataloader.get_conv_data(batch_size=self.conv_batch_size, shuffle=False):
-                self.step(batch, stage='conv', mode='test')
-            self.evaluator.report(mode='test')
+            # test
+            logger.info('[Test]')
+            with torch.no_grad():
+                self.evaluator.reset_metrics()
+                for batch in self.test_dataloader.get_conv_data(batch_size=self.conv_batch_size, shuffle=False):
+                    self.step(batch, stage='conv', mode='test')
+                self.evaluator.report(mode='test')
 
     def fit(self):
         self.pretrain()
@@ -187,3 +197,5 @@ class KGSFSystem(BaseSystem):
 
     def interact(self):
         pass
+    
+

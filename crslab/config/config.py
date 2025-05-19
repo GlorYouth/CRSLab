@@ -13,6 +13,7 @@ import time
 from pprint import pprint
 
 import yaml
+import torch
 from loguru import logger
 from tqdm import tqdm
 
@@ -36,10 +37,10 @@ class Config:
         self.opt = self.load_yaml_configs(config_file)
         # gpu
         os.environ['CUDA_VISIBLE_DEVICES'] = gpu
-        gpu = gpu.split(",")
-        for i in range(len(gpu)):
-            gpu[i] = int(gpu[i])
-        self.opt["gpu"] = gpu
+        if gpu != '-1':
+            self.opt['gpu'] = [i for i in range(len(gpu.split(',')))]
+        else:
+            self.opt['gpu'] = [-1]
         # dataset
         dataset = self.opt['dataset']
         tokenize = self.opt['tokenize']
@@ -144,4 +145,3 @@ class Config:
 if __name__ == '__main__':
     opt_dict = Config('../../config/crs/kbrd/redial.yaml')
     pprint(opt_dict)
-

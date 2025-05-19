@@ -1,4 +1,5 @@
 from setuptools import setup, find_packages
+
 try:
     import torch
     import torch_geometric
@@ -20,7 +21,7 @@ install_requires = [
     'fasttext<=0.9.3',
     'scikit-learn<=1.6.1',
     'requests<=2.32.3',
-    'setuptools<=80.7.1'
+    'setuptools<80.0.0'
 ]
 
 classifiers = [

@@ -2,6 +2,9 @@
 # @Author : Xiaolei Wang
 # @Email  : wxl1999@foxmail.com
 
+from abc import abstractmethod, ABC
+from typing import Literal
+
 # UPDATE:
 # @Time   : 2020/12/14
 # @Author : Xiaolei Wang
@@ -9,7 +12,6 @@
 import math
 from abc import abstractmethod, ABC
 from typing import Literal
-
 import numpy as np
 import torch
 from loguru import logger
