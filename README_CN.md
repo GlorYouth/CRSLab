@@ -108,7 +108,7 @@ pip install torch_scatter torch_sparse torch_cluster torch_spline_conv -f https:
 通过源文件进行进行安装：
 
 ```bash
-git clone https://github.com/RUCAIBox/CRSLab && cd CRSLab
+git clone https://github.com/GlorYouth/CRSLab.git && cd CRSLab
 pip install -r requirements.txt
 pip install -e .
 ```
