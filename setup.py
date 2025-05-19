@@ -21,7 +21,8 @@ install_requires = [
     'fasttext<=0.9.3',
     'scikit-learn<=1.6.1',
     'requests<=2.32.3',
-    'setuptools<80.0.0'
+    'setuptools<80.0.0',
+    'tensorboard<=2.19.0'
 ]
 
 classifiers = [
