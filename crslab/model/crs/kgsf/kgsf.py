@@ -168,15 +168,7 @@ class KGSFModel(BaseModel):
 
     def _build_recommendation_layer(self):
         self.rec_bias = nn.Linear(self.kg_emb_dim, self.n_entity)
-        # Get label_smoothing factor for recommendation loss
-        # It might be in opt['rec_optim_opt']['label_smoothing'] or opt['label_smoothing_factor']
-        # We'll try to get it from a general location first, then specific.
-        rec_label_smoothing = self.opt.get('label_smoothing_factor', 0.0) # Try global first
-        if 'rec_optim_opt' in self.opt and 'label_smoothing' in self.opt['rec_optim_opt']:
-             rec_label_smoothing = self.opt['rec_optim_opt'].get('label_smoothing', rec_label_smoothing)
-        elif 'label_smoothing' in self.opt : # Check if it's directly in opt for rec
-            rec_label_smoothing = self.opt.get('label_smoothing', rec_label_smoothing)
-
+        rec_label_smoothing = self.opt.get('rec_label_smoothing', 0.0)
 
         logger.info(f"Recommendation Label Smoothing Factor: {rec_label_smoothing}")
         self.rec_loss = nn.CrossEntropyLoss(label_smoothing=rec_label_smoothing)
@@ -224,11 +216,7 @@ class KGSFModel(BaseModel):
             n_positions=self.n_positions
         )
         # Get label_smoothing factor for conversation loss
-        conv_label_smoothing = self.opt.get('label_smoothing_factor', 0.0) # Try global first
-        if 'conv_optim_opt' in self.opt and 'label_smoothing' in self.opt['conv_optim_opt']:
-            conv_label_smoothing = self.opt['conv_optim_opt'].get('label_smoothing', conv_label_smoothing)
-        elif 'label_smoothing' in self.opt : # Check if it's directly in opt for conv
-            conv_label_smoothing = self.opt.get('label_smoothing', conv_label_smoothing)
+        conv_label_smoothing = self.opt.get('conv_label_smoothing', 0.0)
 
         logger.info(f"Conversation Label Smoothing Factor: {conv_label_smoothing}")
         self.conv_loss = nn.CrossEntropyLoss(ignore_index=self.pad_token_idx, label_smoothing=conv_label_smoothing)

@@ -8,6 +8,8 @@ response_truncate: 30
 scale: 1
 # model
 model: KGSF
+rec_label_smoothing: 0.1 # 推荐模型的标签平滑因子
+conv_label_smoothing: 0.1 # 对话模型的标签平滑因子
 token_emb_dim: 300
 kg_emb_dim: 128
 num_bases: 8
@@ -23,12 +25,11 @@ reduction: false
 n_positions: 1024
 # optim
 pretrain:
-  epoch: 3
+  epoch: 2
   batch_size: 128
   optimizer:
     name: Adam
     lr: !!float 1e-3
-    label_smoothing: 0.1 # 推荐模型的标签平滑因子
 rec:
   epoch: 2
   batch_size: 128
@@ -41,7 +42,6 @@ conv:
   optimizer:
     name: Adam
     lr: !!float 1e-3
-    label_smoothing: 0.1 # 对话模型的标签平滑因子
   lr_scheduler:
     name: ReduceLROnPlateau
     patience: 3
