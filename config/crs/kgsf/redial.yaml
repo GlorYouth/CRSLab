@@ -28,6 +28,7 @@ pretrain:
   optimizer:
     name: Adam
     lr: !!float 1e-3
+    label_smoothing: 0.1 # 推荐模型的标签平滑因子
 rec:
   epoch: 2
   batch_size: 128
@@ -40,6 +41,7 @@ conv:
   optimizer:
     name: Adam
     lr: !!float 1e-3
+    label_smoothing: 0.1 # 对话模型的标签平滑因子
   lr_scheduler:
     name: ReduceLROnPlateau
     patience: 3

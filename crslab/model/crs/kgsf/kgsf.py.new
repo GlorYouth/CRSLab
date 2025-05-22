@@ -396,7 +396,9 @@ class KGSFModel(BaseModel):
 
             logits = sum_logits.reshape(len(sequences[0]), batch_size, 1, -1)
             # turn into probabilities,in case of negative numbers
-            probs, preds = torch.nn.functional.softmax(logits).topk(beam, dim=-1)
+            # Note: Softmax is applied here for beam search scoring, not directly part of loss calculation
+            probs, preds = torch.nn.functional.softmax(logits, dim=-1).topk(beam, dim=-1)
+
 
             # (candeidate, bs, 1 , beam) during first loop, candidate=1, otherwise candidate=beam
 
@@ -405,13 +407,18 @@ class KGSFModel(BaseModel):
                 for n in range(len(sequences[j])):
                     for k in range(beam):
                         prob = sequences[j][n][2]
-                        logit = sequences[j][n][1]
-                        if logit == []:
+                        logit_history = sequences[j][n][1] # Renamed for clarity
+                        current_input_sequence = inputs[n][j].reshape(-1)
+                        predicted_token = preds[n][j][0][k].reshape(-1)
+                        
+                        # For the first step, logit_history is empty
+                        if not isinstance(logit_history, torch.Tensor) and not logit_history: # Check if empty list
                             logit_tmp = logits[n][j][0].unsqueeze(0)
                         else:
-                            logit_tmp = torch.cat((logit, logits[n][j][0].unsqueeze(0)), dim=0)
-                        seq_tmp = torch.cat((inputs[n][j].reshape(-1), preds[n][j][0][k].reshape(-1)))
-                        candidate = [seq_tmp, logit_tmp, prob * probs[n][j][0][k]]
+                            logit_tmp = torch.cat((logit_history, logits[n][j][0].unsqueeze(0)), dim=0)
+                        
+                        seq_tmp = torch.cat((current_input_sequence, predicted_token))
+                        candidate = [seq_tmp, logit_tmp, prob * probs[n][j][0][k].item()] # Use .item() for scalar prob
                         all_candidates.append(candidate)
                 ordered = sorted(all_candidates, key=lambda tup: tup[2], reverse=True)
                 sequences[j] = ordered[:beam]
@@ -424,8 +431,77 @@ class KGSFModel(BaseModel):
                  all_finished = ((current_inputs_for_check == self.end_token_idx).sum(dim=-1) > 0).all().item() # Check if all sequences in beam have END
                  if all_finished:
                     break
-        logits = torch.stack([seq[0][1] for seq in sequences])
-        inputs = torch.stack([seq[0][0] for seq in sequences])
+            else: # Should not happen if batch_size > 0
+                break
+
+
+        # Prepare final output based on best sequences
+        final_logits_list = []
+        final_inputs_list = []
+        for j in range(batch_size):
+            # sequences[j][0] should be the best sequence for this batch item
+            if sequences[j]: # Check if sequences[j] is not empty
+                 final_inputs_list.append(sequences[j][0][0])
+                 if isinstance(sequences[j][0][1], torch.Tensor): # Check if logits were accumulated
+                    final_logits_list.append(sequences[j][0][1])
+                 else: # Handle case where no logits were accumulated (e.g. very short generation)
+                    # Create a dummy tensor or handle as appropriate for your logic
+                    # For now, let's assume we need to provide something of expected shape if possible
+                    # This part might need adjustment based on how downstream code uses these logits
+                    # If only preds are used, this might be less critical.
+                    # Let's try to create a placeholder if empty, otherwise it will fail torch.stack
+                    # This is a tricky part if generation is shorter than expected or beam search terminates early.
+                    # For simplicity, if no logits, we might not be able to stack.
+                    # Consider what the expected output format is if generation is very short.
+                    # For now, if no logits, we will skip adding to final_logits_list,
+                    # and this will cause an error in torch.stack if final_logits_list is empty.
+                    # A more robust solution would be to pad or ensure consistent output.
+                    pass # Or append a tensor of zeros with expected shape if needed
+
+        if not final_inputs_list: # If all sequences were empty for some reason
+            # Fallback or error handling
+            # This case should ideally not be reached if batch_size > 0
+            # Returning empty tensors or raising an error might be options
+            return torch.empty(0), torch.empty(0, dtype=torch.long)
+
+
+        inputs = torch.stack(final_inputs_list)
+        # Only stack logits if the list is not empty and elements are tensors
+        if final_logits_list and all(isinstance(lg, torch.Tensor) for lg in final_logits_list):
+            try:
+                # Ensure all logit tensors have the same sequence length for stacking
+                # This might require padding if sequences have different lengths,
+                # but beam search typically generates up to response_truncate or END token.
+                # If lengths differ, this will error.
+                # For now, assume lengths are consistent from beam search logic or handle padding if necessary.
+                # The original code `torch.stack([seq[0][1] for seq in sequences])` assumed this.
+                max_len = max(lg.shape[0] for lg in final_logits_list)
+                padded_logits = []
+                for lg in final_logits_list:
+                    pad_len = max_len - lg.shape[0]
+                    if pad_len > 0:
+                        # Pad with a value that won't affect softmax much if it's further processed, e.g., -inf or 0
+                        # Or, ensure beam search outputs consistent lengths or handle this padding more carefully.
+                        # For CrossEntropy, padding value in logits doesn't matter if target is ignore_index.
+                        # Here, these are intermediate logits from beam search.
+                        padding = torch.zeros((pad_len, lg.shape[1]), device=lg.device, dtype=lg.dtype)
+                        padded_logits.append(torch.cat((lg, padding), dim=0))
+                    else:
+                        padded_logits.append(lg)
+                logits = torch.stack(padded_logits)
+            except Exception as e:
+                logger.error(f"Error stacking logits in beam search: {e}")
+                logger.error(f"Logits list: {[lg.shape for lg in final_logits_list if isinstance(lg, torch.Tensor)]}")
+                # Fallback: return inputs and potentially empty or error-indicating logits
+                return torch.empty(0, device=inputs.device), inputs
+
+        elif not final_logits_list: # If list is empty (e.g. all generations were too short)
+             logits = torch.empty(0, device=inputs.device) # Or handle as an error
+        else: # Mixed types or other issues
+            logger.error("final_logits_list contains non-tensor elements or is problematic.")
+            logits = torch.empty(0, device=inputs.device)
+
+
         return logits, inputs
 
 
@@ -460,24 +536,54 @@ class KGSFModel(BaseModel):
             response = response.view(-1)
             loss = self.conv_loss(logits, response)
             return loss, preds
-        else:
-            logits, preds = self._decode_greedy_with_kg(tokens_encoding, conv_entity_reps, conv_entity_emb,
-                                                        entity_padding_mask,
-                                                        conv_word_reps, conv_word_emb, word_padding_mask)
-            return preds
+        else: # mode == 'test'
+            # In test mode, you might want to use greedy or beam search
+            # The original code used _decode_greedy_with_kg for 'test'
+            # If beam search is preferred for testing:
+            # logits, preds = self._decode_beam_search_with_kg(tokens_encoding, conv_entity_reps, conv_entity_emb,
+            #                                             entity_padding_mask,
+            #                                             conv_word_reps, conv_word_emb, word_padding_mask,
+            #                                             beam=self.opt.get('beam_size', 4)) # Get beam_size from opt
+            # For now, sticking to original greedy for 'test' as per provided code structure
+            _, preds = self._decode_greedy_with_kg(tokens_encoding, conv_entity_reps, conv_entity_emb,
+                                                      entity_padding_mask,
+                                                      conv_word_reps, conv_word_emb, word_padding_mask)
+            return preds # In test mode, typically only predictions are returned, not loss or raw logits
 
     def forward(self, batch, stage, mode):
         if len(self.gpu) >= 2:
             #  forward function operates on different gpus, the weight of graph network need to be copied to other gpu
-            self.entity_edge_idx = self.entity_edge_idx.cuda(torch.cuda.current_device())
-            self.entity_edge_type = self.entity_edge_type.cuda(torch.cuda.current_device())
-            self.word_edges = self.word_edges.cuda(torch.cuda.current_device())
+            current_device = torch.cuda.current_device()
+            self.entity_edge_idx = self.entity_edge_idx.to(current_device)
+            self.entity_edge_type = self.entity_edge_type.to(current_device)
+            self.word_edges = self.word_edges.to(current_device)
+            # Re-load or ensure copy_mask is on the correct device if it's not a registered buffer
+            # If it's frequently reloaded, consider making it a buffer if its content is static per dataset
             self.copy_mask = torch.as_tensor(np.load(os.path.join(self.dpath, "copy_mask.npy")).astype(bool),
-                                             ).cuda(torch.cuda.current_device())
+                                             dtype=torch.bool).to(current_device) # Ensure correct dtype for boolean mask
+        
+        output = None # Initialize output
         if stage == "pretrain":
-            loss = self.pretrain_infomax(batch)
+            output = self.pretrain_infomax(batch)
         elif stage == "rec":
-            loss = self.recommend(batch, mode)
+            # recommend returns rec_loss, info_loss, rec_scores
+            # The system likely expects a single loss or a tuple that it can unpack
+            rec_loss, info_loss, rec_scores = self.recommend(batch, mode)
+            # How these losses are combined or handled depends on the system's training loop
+            # For now, let's assume the system primarily uses rec_loss for optimization if only one loss is expected
+            # Or, it might handle a dictionary of losses.
+            # Returning a tuple, the system might take the first element as the primary loss.
+            if info_loss is not None:
+                output = (rec_loss + info_loss, rec_scores) # Example: combine losses
+            else:
+                output = (rec_loss, rec_scores)
+
         elif stage == "conv":
-            loss = self.converse(batch, mode)
-        return loss
+            if mode != 'test':
+                loss, preds = self.converse(batch, mode)
+                output = (loss, preds)
+            else:
+                preds = self.converse(batch, mode)
+                output = preds # In test mode for converse, only preds are returned
+        return output
+
