@@ -26,32 +26,26 @@
 
 
 
-- [安装](#安装)
-- [快速上手](#快速上手)
-- [模型](#模型)
-- [数据集](#数据集)
-- [评测结果](#评测结果)
-- [发行版本](#发行版本)
-- [贡献](#贡献)
-- [引用](#引用)
-- [项目团队](#项目团队)
-- [免责声明](#免责声明)
+- [CRSLab](#crslab)
+  - [安装](#安装)
+    - [安装 PyTorch](#安装-pytorch)
+    - [安装 PyTorch Geometric](#安装-pytorch-geometric)
+    - [安装 CRSLab](#安装-crslab)
+  - [快速上手](#快速上手)
+  - [模型](#模型)
+  - [数据集](#数据集)
+  - [评测结果](#评测结果)
+    - [推荐任务](#推荐任务)
+    - [对话任务](#对话任务)
+    - [策略任务](#策略任务)
+  - [项目团队](#项目团队)
+  - [免责声明](#免责声明)
 
 
 
 ## 安装
 
-CRSLab 可以在以下几种系统上运行：
-
-- Linux
-- Windows 10
-- macOS X
-
-CRSLab 需要在 Python 3.6 或更高的环境下运行。
-
-CRSLab 要求 torch 版本为1.8以上，如果你想在 GPU 上运行 CRSLab，请确保你的 CUDA 版本或者 CUDAToolkit 版本在 10.2 及以上。为保证 PyTorch Geometric 库的正常运行，请使用[链接](https://pytorch-geometric.com/whl/)所示的安装方式。
-
-
+我所修改的目前我只能在Linux上运行，此版本将绝大部分依赖更新至最新版本（截止2025.5.19）
 
 ### 安装 PyTorch
 
@@ -231,41 +225,6 @@ python run_crslab.py --config config/crs/kgsf/redial.yaml --save_data --save_sys
 | TG-ReDial  | **0.600** | **0.830** | **0.893** | **0.600** | **0.693** | **0.696** | **0.600** | **0.727** | **0.741** |
 
 上述结果是我们使用 CRSLab 进行实验得到的。然而，这些算法是根据我们的经验和理解来实现和调参的，可能还没有达到它们的最佳性能。如果您能在某个具体算法上得到更好的结果，请告知我们。验证结果后，我们会更新该表。
-
-## 发行版本
-
-| 版本号 |   发行日期    |     特性     |
-| :----: | :-----------: | :----------: |
-| v0.1.1 | 1 / 4 / 2021  | Basic CRSLab |
-| v0.1.2 | 3 / 28 / 2021 |    CRSLab    |
-
-
-
-## 贡献
-
-如果您遇到错误或有任何建议，请通过 [Issue](https://github.com/RUCAIBox/CRSLab/issues) 进行反馈
-
-我们欢迎关于修复错误、添加新特性的任何贡献。
-
-如果想贡献代码，请先在 Issue 中提出问题，然后再提 PR。
-
-我们感谢 [@shubaoyu](https://github.com/shubaoyu), [@ToheartZhang](https://github.com/ToheartZhang) 通过 PR 为项目贡献的新特性。
-
-
-
-## 引用
-
-如果你觉得 CRSLab 对你的科研工作有帮助，请引用我们的[论文](https://arxiv.org/pdf/2101.00939.pdf)：
-
-```
-@article{crslab,
-    title={CRSLab: An Open-Source Toolkit for Building Conversational Recommender System},
-    author={Kun Zhou, Xiaolei Wang, Yuanhang Zhou, Chenzhan Shang, Yuan Cheng, Wayne Xin Zhao, Yaliang Li, Ji-Rong Wen},
-    year={2021},
-    journal={arXiv preprint arXiv:2101.00939}
-}
-```
-
 
 
 ## 项目团队
