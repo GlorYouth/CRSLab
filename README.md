@@ -27,46 +27,40 @@ Python and PyTorch. CRSLab has the following highlights:
 
 
 
-- [Installation](#Installation)
-- [Quick-Start](#Quick-Start)
-- [Models](#Models)
-- [Datasets](#Datasets)
-- [Performance](#Performance)
-- [Releases](#Releases)
-- [Contributions](#Contributions)
-- [Citing](#Citing)
-- [Team](#Team)
-- [License](#License)
+- [CRSLab](#crslab)
+  - [Installation](#installation)
+    - [Install PyTorch](#install-pytorch)
+    - [Install PyTorch Geometric](#install-pytorch-geometric)
+    - [Install CRSLab](#install-crslab)
+  - [Quick-Start](#quick-start)
+  - [Models](#models)
+  - [Datasets](#datasets)
+  - [Performance](#performance)
+    - [Recommendation Task](#recommendation-task)
+    - [Conversation Task](#conversation-task)
+    - [Policy Task](#policy-task)
+  - [Releases](#releases)
+  - [Contributions](#contributions)
+  - [Citing](#citing)
+  - [Team](#team)
+  - [License](#license)
 
 
 
 ## Installation
 
-CRSLab works with the following operating systems：
-
-- Linux
-- Windows 10
-- macOS X
-
-CRSLab requires Python version 3.7 or later.
-
-CRSLab requires torch version 1.8. If you want to use CRSLab with GPU, please ensure that CUDA or CUDAToolkit version is 10.2 or later. Please use the combinations shown in this [Link](https://pytorch-geometric.com/whl/) to ensure the normal operation of PyTorch Geometric.
-
-
+Currently, this version can only run on Linux and has updated most dependencies to their latest versions (as of 2025.5.19).
 
 ### Install PyTorch
 
-Use PyTorch [Locally Installation](https://pytorch.org/get-started/locally/) or [Previous Versions Installation](https://pytorch.org/get-started/previous-versions/) commands to install PyTorch. For example, on Linux and Windows 10:
+Use PyTorch [local installation](https://pytorch.org/get-started/locally/) or [previous versions installation](https://pytorch.org/get-started/previous-versions/) commands to install PyTorch. For example, on Linux:
 
 ```bash
-# CUDA 10.2
-conda install pytorch==1.8.0 torchvision==0.9.0 torchaudio==0.8.0 cudatoolkit=10.2 -c pytorch
-
-# CUDA 11.1
-conda install pytorch==1.8.0 torchvision==0.9.0 torchaudio==0.8.0 cudatoolkit=11.1 -c pytorch -c conda-forge
-
-# CPU Only
-conda install pytorch==1.8.0 torchvision==0.9.0 torchaudio==0.8.0 cpuonly -c pytorch
+conda create -n crslab python=3.13
+conda activate crslab
+conda install gcc_linux-64 gxx_linux-64 cmake pip # cmake and pip are required for 3.13
+conda install -c conda-forge gperftools # required for 3.13
+pip install torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0 --index-url https://download.pytorch.org/whl/cu126
 ```
 
 If you want to use CRSLab with GPU, make sure the following command prints `True` after installation:
@@ -75,8 +69,6 @@ If you want to use CRSLab with GPU, make sure the following command prints `True
 $ python -c "import torch; print(torch.cuda.is_available())"
 >>> True
 ```
-
-
 
 ### Install PyTorch Geometric
 
@@ -91,35 +83,29 @@ Find the CUDA version PyTorch was installed with:
 
 ```bash
 $ python -c "import torch; print(torch.version.cuda)"
->>> 11.1
+>>> 12.6
 ```
 
 For Linux:
 
 Install the relevant packages:
 
-```
-conda install pyg -c pyg
+```bash
+pip install torch_geometric
+pip install torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.7.0+cu126.html
 ```
 
-For others：
+For other systems:
 
 Check PyG [installation documents](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html) to install the relevant packages.
 
-
-
 ### Install CRSLab
 
-You can install from pip:
+Install from source:
 
 ```bash
-pip install crslab
-```
-
-OR install from source:
-
-```bash
-git clone https://github.com/RUCAIBox/CRSLab && cd CRSLab
+git clone https://github.com/GlorYouth/CRSLab.git && cd CRSLab
+pip install -r requirements.txt
 pip install -e .
 ```
 
