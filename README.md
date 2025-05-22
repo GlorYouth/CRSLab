@@ -39,9 +39,6 @@ Python and PyTorch. CRSLab has the following highlights:
     - [Recommendation Task](#recommendation-task)
     - [Conversation Task](#conversation-task)
     - [Policy Task](#policy-task)
-  - [Releases](#releases)
-  - [Contributions](#contributions)
-  - [Citing](#citing)
   - [Team](#team)
   - [License](#license)
 
@@ -218,42 +215,6 @@ We have trained and test the integrated models on the TG-Redial dataset, which i
 | TG-ReDial  | **0.600** | **0.830** | **0.893** | **0.600** | **0.693** | **0.696** | **0.600** | **0.727** | **0.741** |
 
 The above results were obtained from our CRSLab in preliminary experiments. However, these algorithms were implemented and tuned based on our understanding and experiences, which may not achieve their optimal performance. If you could yield a better result for some specific algorithm, please kindly let us know. We will update this table after the results are verified.
-
-## Releases
-
-| Releases |     Date      |   Features   |
-| :------: | :-----------: | :----------: |
-|  v0.1.1  | 1 / 4 / 2021  | Basic CRSLab |
-|  v0.1.2  | 3 / 28 / 2021 |    CRSLab    |
-
-
-
-## Contributions
-
-Please let us know if you encounter a bug or have any suggestions by [filing an issue](https://github.com/RUCAIBox/CRSLab/issues).
-
-We welcome all contributions from bug fixes to new features and extensions.
-
-We expect all contributions discussed in the issue tracker and going through PRs.
-
-We thank the nice contributions through PRs from [@shubaoyu](https://github.com/shubaoyu), [@ToheartZhang](https://github.com/ToheartZhang).
-
-
-
-## Citing
-
-If you find CRSLab useful for your research or development, please cite our [Paper](https://arxiv.org/pdf/2101.00939.pdf):
-
-```
-@article{crslab,
-    title={CRSLab: An Open-Source Toolkit for Building Conversational Recommender System},
-    author={Kun Zhou, Xiaolei Wang, Yuanhang Zhou, Chenzhan Shang, Yuan Cheng, Wayne Xin Zhao, Yaliang Li, Ji-Rong Wen},
-    year={2021},
-    journal={arXiv preprint arXiv:2101.00939}
-}
-```
-
-
 
 ## Team
 
