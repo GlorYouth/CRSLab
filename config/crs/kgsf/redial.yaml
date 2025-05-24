@@ -23,7 +23,7 @@ reduction: false
 n_positions: 1024
 # optim
 pretrain:
-  epoch: 3
+  epoch: 2
   batch_size: 128
   optimizer:
     name: Adam
