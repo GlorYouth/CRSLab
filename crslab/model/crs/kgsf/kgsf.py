@@ -25,7 +25,7 @@ import torch
 import torch.nn.functional as F
 from loguru import logger
 from torch import nn
-from torch_geometric.nn import GPSConv, RGCNConv, GENConv
+from torch_geometric.nn import GPSConv, FastRGCNConv, GENConv
 
 from crslab.config import MODEL_PATH
 from crslab.model.base import BaseModel
@@ -146,7 +146,7 @@ class KGSFModel(BaseModel):
 
     def _build_kg_layer(self):
         # db encoder
-        self.entity_encoder = RGCNConv(self.n_entity, self.kg_emb_dim, self.n_relation, self.num_bases)
+        self.entity_encoder = FastRGCNConv(self.n_entity, self.kg_emb_dim, self.n_relation, self.num_bases)
         self.entity_self_attn = SelfAttentionSeq(self.kg_emb_dim, self.kg_emb_dim)
 
         # 定义 GPSConv 的 'channels'
