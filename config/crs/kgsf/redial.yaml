@@ -23,19 +23,24 @@ reduction: false
 n_positions: 1024
 # optim
 pretrain:
-  epoch: 2
+  epoch: 4
   batch_size: 128
   optimizer:
     name: Adam
-    lr: !!float 1e-3
+    lr: !!float 5e-5  # 初始学习率 (initial_lr)
+  lr_scheduler:
+    name: LinearIncreasingLR # 使用新定义的调度器
+    total_epochs: 3 # 对应 pretrain 阶段的总 epoch 数
+    max_lr: !!float 1e-3 # 在 pretrain 阶段结束时希望达到的最大学习率
+    warmup_steps: 0 # 如果不需要预热，可以设为0；否则例如设置为 train_dataloader_len * 1 (一个epoch的步数)
 rec:
-  epoch: 2
+  epoch: 3
   batch_size: 128
   optimizer:
     name: Adam
     lr: !!float 1e-3
 conv:
-  epoch: 2
+  epoch: 3
   batch_size: 128
   optimizer:
     name: Adam

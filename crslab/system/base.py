@@ -200,6 +200,13 @@ class BaseSystem(ABC):
             loss /= self.update_freq
         loss.backward(loss.clone().detach())
 
+        # <<<<<<<<<<<< 在这里添加梯度裁剪 >>>>>>>>>>>>
+        # 在梯度计算完毕 (loss.backward()) 之后，
+        # 并且在参数更新 (_update_params() -> optimizer.step()) 之前。
+        if self.update_freq == 1 or self._number_grad_accum == 0:
+            # 只有当实际要执行参数更新时，才对累积的梯度进行裁剪
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=800)  # self.model 指向您的PyTorch模型实例
+
         self._update_params()
 
     def _zero_grad(self):

@@ -25,7 +25,7 @@ import torch
 import torch.nn.functional as F
 from loguru import logger
 from torch import nn
-from torch_geometric.nn import GATv2Conv, RGCNConv
+from torch_geometric.nn import GPSConv, RGCNConv, GENConv
 
 from crslab.config import MODEL_PATH
 from crslab.model.base import BaseModel
@@ -149,8 +149,34 @@ class KGSFModel(BaseModel):
         self.entity_encoder = RGCNConv(self.n_entity, self.kg_emb_dim, self.n_relation, self.num_bases)
         self.entity_self_attn = SelfAttentionSeq(self.kg_emb_dim, self.kg_emb_dim)
 
-        # concept encoder
-        self.word_encoder = GATv2Conv(self.kg_emb_dim, self.kg_emb_dim)
+        # 定义 GPSConv 的 'channels'
+        gps_channels = self.kg_emb_dim  # 或者您为词特征选择的任何其他维度
+        num_gps_attn_heads = 2  # GPSConv 中全局注意力的头数示例
+
+        # 1. 构建局部的 MessagePassing 层 (例如，GENConv)
+        # 这个 local_mpnn_for_gps 也应该在 'gps_channels' 上操作。
+        local_mpnn_for_gps = GENConv(
+            in_channels=gps_channels,  # 输入通道数
+            out_channels=gps_channels,  # 输出通道数
+            aggr='softmax_sg',  # 聚合器示例, 'softmax_sg' (带有skip-connection的softmax) 通常是个好选择
+            num_layers=2,  # 消息构造中MLP的层数
+            norm='layer',  # 使用 LayerNorm
+            # ... 其他 GENConv 参数可以根据需要添加
+        )
+
+        # 2. 构建 GPSConv
+        # self.dropout 是您模型中定义的dropout率
+        self.word_encoder = GPSConv(
+            channels=gps_channels,  # 输入、内部和输出的特征维度
+            conv=local_mpnn_for_gps,  # 指定的局部MPNN层
+            heads=num_gps_attn_heads,  # 全局多头注意力机制的头数
+            dropout=self.dropout,  # 用于GPSConv内部注意力和前馈网络的dropout率
+            attn_type='multihead',  # 全局注意力的类型, 'multihead' 是标准选择
+            norm='layer',  # 要使用的归一化层 (例如 'layer' 对应 LayerNorm, 'batch' 对应 BatchNorm)
+            act='relu'  # 要使用的激活函数 (例如 'relu', 'gelu')
+            # attn_kwargs, norm_kwargs, act_kwargs 可用于更细致的参数设置
+        )
+
         self.word_self_attn = SelfAttentionSeq(self.kg_emb_dim, self.kg_emb_dim)
 
         # gate mechanism
