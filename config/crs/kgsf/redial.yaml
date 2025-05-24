@@ -1,28 +1,40 @@
 # dataset
 dataset: ReDial
 tokenize: nltk
-embedding: word2vec.npy
+embedding: word2vec.npy # 指向预训练的词向量文件路径 (针对主要词汇表)
+item_texts_path: "data/dataset/redial/item_texts.json" # 新增: 项目文本描述文件的路径, 例如 data/dataset/ReDial/item_texts.json
+
 # dataloader
-context_truncate: 256
-response_truncate: 30
-scale: 1
+context_truncate: 256       # 对话上下文最大长度
+response_truncate: 30       # 生成回复最大长度
+entity_truncate: 256        # 上下文中提及实体的最大数量 (KGSF dataloader中会用到)
+word_truncate: 256          # 上下文中提及关键词的最大数量 (KGSF dataloader中会用到)
+item_text_truncate: 50      # 新增: 项目文本描述的最大token长度
+scale: 1                    # 一般用于数据增强或采样，此处保留原样
+
 # model
 model: KGSF
-rec_label_smoothing: 0.1 # 推荐模型的标签平滑因子
-conv_label_smoothing: 0.1 # 对话模型的标签平滑因子
-token_emb_dim: 300
-kg_emb_dim: 128
-num_bases: 8
-n_heads: 2
-n_layers: 2
-ffn_size: 300
-dropout: 0.1
-attention_dropout: 0.0
-relu_dropout: 0.1
-learn_positional_embeddings: false
-embeddings_scale: true
-reduction: false
-n_positions: 1024
+dim: 300                    # 主要的嵌入和隐藏层维度 (如词嵌入维度, Transformer内部维度)
+kg_emb_dim: 128             # 知识图谱实体/项目ID的嵌入维度
+item_text_emb_dim: 128      # 新增: 项目文本编码后的嵌入维度。为方便与kg_emb_dim融合，建议设置为与kg_emb_dim相同。
+item_text_gru_hidden_size: 300 # 新增: 项目文本编码器GRU的隐藏层大小 (可以与dim一致)
+item_text_gru_num_layers: 1 # 新增: 项目文本编码器GRU的层数
+
+rec_label_smoothing: 0.1    # 推荐模型的标签平滑因子
+conv_label_smoothing: 0.1   # 对话模型的标签平滑因子
+# token_emb_dim: 300        # 此参数功能已由 'dim' 参数覆盖, KGSFModel中词嵌入维度统一使用 self.dim
+num_bases: 8                # RGCN的bases数量
+n_heads: 2                  # Transformer的注意力头数
+n_layers: 2                 # Transformer的层数
+ffn_size: 300               # Transformer前馈网络隐藏层大小
+dropout: 0.1                # Dropout概率
+attention_dropout: 0.0      # 注意力层的Dropout概率
+relu_dropout: 0.1           # ReLU激活后的Dropout概率
+learn_positional_embeddings: false # 是否学习位置嵌入
+embeddings_scale: true      # 是否对嵌入进行缩放
+reduction: false            # TransformerEncoder的reduction参数 (True表示输出序列的第一个[CLS]token，False表示输出整个序列)
+n_positions: 1024           # 位置嵌入的最大长度
+
 # optim
 pretrain:
   epoch: 2
