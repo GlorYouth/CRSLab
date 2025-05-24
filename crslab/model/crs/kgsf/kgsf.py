@@ -25,7 +25,7 @@ import torch
 import torch.nn.functional as F
 from loguru import logger
 from torch import nn
-from torch_geometric.nn import GCNConv, RGCNConv
+from torch_geometric.nn import GATv2Conv, RGCNConv
 
 from crslab.config import MODEL_PATH
 from crslab.model.base import BaseModel
@@ -150,7 +150,7 @@ class KGSFModel(BaseModel):
         self.entity_self_attn = SelfAttentionSeq(self.kg_emb_dim, self.kg_emb_dim)
 
         # concept encoder
-        self.word_encoder = GCNConv(self.kg_emb_dim, self.kg_emb_dim)
+        self.word_encoder = GATv2Conv(self.kg_emb_dim, self.kg_emb_dim)
         self.word_self_attn = SelfAttentionSeq(self.kg_emb_dim, self.kg_emb_dim)
 
         # gate mechanism
