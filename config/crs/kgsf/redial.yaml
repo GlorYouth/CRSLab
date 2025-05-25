@@ -9,7 +9,7 @@ scale: 1
 # model
 model: KGSF
 token_emb_dim: 300
-kg_emb_dim: 128
+kg_emb_dim: 256
 num_bases: 8
 n_heads: 2
 n_layers: 2
@@ -24,19 +24,19 @@ n_positions: 1024
 # optim
 pretrain:
   epoch: 2
-  batch_size: 128
+  batch_size: 64
   optimizer:
     name: Adam
     lr: !!float 1e-3
 rec:
   epoch: 2
-  batch_size: 128
+  batch_size: 64
   optimizer:
     name: Adam
     lr: !!float 1e-3
 conv:
   epoch: 2
-  batch_size: 128
+  batch_size: 64
   optimizer:
     name: Adam
     lr: !!float 1e-3
