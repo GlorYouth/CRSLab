@@ -14,6 +14,8 @@
 
 import os
 from abc import ABC, abstractmethod
+
+# import bitsandbytes
 import numpy as np
 import random
 import nltk
@@ -24,6 +26,7 @@ from nltk import word_tokenize
 from torch import optim
 from torch.optim import AdamW
 from transformers import Adafactor
+from came_pytorch import CAME
 
 from crslab.config import SAVE_PATH
 from crslab.evaluator import get_evaluator
@@ -35,6 +38,7 @@ from crslab.system.utils.functions import compute_grad_norm
 optim_class = {}
 optim_class.update({k: v for k, v in optim.__dict__.items() if not k.startswith('__') and k[0].isupper()})
 optim_class.update({'AdamW': AdamW, 'Adafactor': Adafactor})
+optim_class.update({'CAME': CAME})
 lr_scheduler_class = {k: v for k, v in lr_scheduler.__dict__.items() if not k.startswith('__') and k[0].isupper()}
 transformers_tokenizer = ('bert', 'gpt2')
 
@@ -56,7 +60,7 @@ class BaseSystem(ABC):
             restore_system (bool, optional): Indicating if we store system after training. Defaults to False.
             interact (bool, optional): Indicating if we interact with system. Defaults to False.
             debug (bool, optional): Indicating if we train in debug mode. Defaults to False.
-            tensorboard (bool, optional) Indicating if we monitor the training performance in tensorboard. Defaults to False. 
+            tensorboard (bool, optional) Indicating if we monitor the training performance in tensorboard. Defaults to False.
 
         """
         self.opt = opt
