@@ -10,7 +10,7 @@ scale: 1
 model: KGSF
 token_emb_dim: 300
 kg_emb_dim: 256
-num_bases: 8
+num_bases: 4
 n_heads: 2
 n_layers: 2
 ffn_size: 300
@@ -23,25 +23,34 @@ reduction: false
 n_positions: 1024
 # optim
 pretrain:
-  epoch: 2
+  epoch: 3
   batch_size: 64
   optimizer:
-    name: Adam
-    lr: !!float 1e-3
+    name: CAME
+    lr: !!float 2e-4
+    weight_decay: !!float 1e-2
+    betas: [0.9, 0.999, 0.9999]
+    eps: [1.0e-30, 1.0e-16]
 rec:
-  epoch: 2
-  batch_size: 64
+  epoch: 9
+  batch_size: 32
   optimizer:
-    name: Adam
-    lr: !!float 1e-3
+    name: CAME
+    lr: !!float 5e-5
+    weight_decay: !!float 1e-2 #下一步增大
+    betas: [0.93, 0.9995, 0.9999]
+    eps: [1.0e-30, 1.0e-16]
 conv:
-  epoch: 2
+  epoch: 9
   batch_size: 64
   optimizer:
-    name: Adam
-    lr: !!float 1e-3
+    name: CAME
+    lr: !!float 5e-5
+    weight_decay: !!float 1e-2
+    betas: [ 0.9, 0.999, 0.9999 ]
+    eps: [ 1.0e-30, 1.0e-16 ]
   lr_scheduler:
     name: ReduceLROnPlateau
     patience: 3
     factor: 0.5
-  gradient_clip: 0.1
+  gradient_clip: 0.3

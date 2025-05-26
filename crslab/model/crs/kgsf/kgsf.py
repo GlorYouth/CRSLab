@@ -128,7 +128,7 @@ class KGSFModel(BaseModel):
         # 初始化 AMP (混合精度训练) 相关组件
         self.use_amp = self.device.type == 'cuda'  # 判断是否使用 CUDA，从而决定是否启用 AMP
         self.scaler = GradScaler(enabled=self.use_amp)  # 初始化 GradScaler，仅在 CUDA 环境下启用
-        logger.info(f"[AMP] 混合精度训练已 {'启用' if self.use_amp else '禁用'}.")
+        logger.info(f"[AMP] 混合精度训练已{'启用' if self.use_amp else '禁用'}.")
 
         super(KGSFModel, self).__init__(opt, device, dpath, resource)
 
