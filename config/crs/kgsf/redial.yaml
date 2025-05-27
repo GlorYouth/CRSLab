@@ -9,7 +9,7 @@ scale: 1
 # model
 model: KGSF
 token_emb_dim: 300
-kg_emb_dim: 256
+kg_emb_dim: 200
 num_bases: 4
 n_heads: 2
 n_layers: 2
