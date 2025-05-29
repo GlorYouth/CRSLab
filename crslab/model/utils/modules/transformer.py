@@ -8,7 +8,7 @@
 # @Email  : francis_kun_zhou@163.com
 
 import math
-from typing import Optional, Union, Tuple
+from typing import Optional, Union, Tuple, Type
 
 import numpy as np
 import torch
@@ -142,21 +142,57 @@ class MultiHeadAttention(nn.Module):
         return out
 
 
-class TransformerFFN(nn.Module):
-    def __init__(self, dim, dim_hidden, relu_dropout=.0):
-        super(TransformerFFN, self).__init__()
-        self.relu_dropout = nn.Dropout(p=relu_dropout)
-        self.lin1 = nn.Linear(dim, dim_hidden)
-        self.lin2 = nn.Linear(dim_hidden, dim)
-        nn.init.xavier_uniform_(self.lin1.weight)
-        nn.init.xavier_uniform_(self.lin2.weight)
-        # TODO: initialize biases to 0
 
-    def forward(self, x):
-        x = F.relu(self.lin1(x))
-        x = self.relu_dropout(x)  # --relu-dropout
+class TransformerFFN(nn.Module):
+    """
+    Transformer 模型中的前馈网络 (Feed-Forward Network) 模块。
+
+    它通常由两个线性层和一个中间的非线性激活函数组成。
+    FFN(x) = activation(x @ W1 + b1) @ W2 + b2
+    Dropout 可以在激活之后、第二个线性层之前应用。
+    """
+    def __init__(self,
+                 dim: int,                       # 输入和输出维度
+                 dim_hidden: int,                # 隐藏层维度
+                 activation_fn_class: Type[nn.Module] = nn.ReLU, # 激活函数类 (例如 nn.ReLU, nn.GELU)
+                 activation_dropout: float = 0.0, # 在激活函数和第二个线性层之间的 dropout 比率
+                 use_bias: bool = True           # 线性层是否使用偏置项
+                ):
+        super(TransformerFFN, self).__init__()
+        self.dim = dim
+        self.dim_hidden = dim_hidden
+
+        # 如果 dropout 为 0，使用 nn.Identity() 更清晰地表示无操作
+        self.activation_dropout_layer = nn.Dropout(p=activation_dropout) if activation_dropout > 0.0 else nn.Identity()
+
+        self.lin1 = nn.Linear(dim, dim_hidden, bias=use_bias)
+        self.activation = activation_fn_class() # 实例化激活函数
+        self.lin2 = nn.Linear(dim_hidden, dim, bias=use_bias)
+
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        """初始化权重和偏置。"""
+        nn.init.xavier_uniform_(self.lin1.weight)
+        if self.lin1.bias is not None:
+            nn.init.zeros_(self.lin1.bias)
+
+        nn.init.xavier_uniform_(self.lin2.weight)
+        if self.lin2.bias is not None:
+            nn.init.zeros_(self.lin2.bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        前向传播。
+        :param x: 输入张量，形状为 (..., dim)
+        :return: 输出张量，形状为 (..., dim)
+        """
+        x = self.lin1(x)
+        x = self.activation(x)
+        x = self.activation_dropout_layer(x) # 应用激活后的 dropout
         x = self.lin2(x)
         return x
+
 
 class TransformerEncoderLayer(nn.Module): # 保持与之前一致的简化版
     def __init__(self, n_heads: int, embedding_size: int, ffn_size: int,

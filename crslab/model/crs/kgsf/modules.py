@@ -130,7 +130,7 @@ class TransformerDecoderLayerKG(nn.Module):
         )
         self.norm2_kg = nn.LayerNorm(embedding_size)
 
-        self.ffn = TransformerFFN(embedding_size, ffn_size, relu_dropout=relu_dropout)
+        self.ffn = TransformerFFN(embedding_size, ffn_size, activation_dropout=relu_dropout)
         self.norm3 = nn.LayerNorm(embedding_size)
 
     def forward(self, x, encoder_output, encoder_mask, kg_encoder_output, kg_encoder_mask, db_encoder_output,
