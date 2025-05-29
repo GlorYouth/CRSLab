@@ -241,97 +241,141 @@ class TransformerDecoderLayerKG(nn.Module):
         return x
 
 
-
 class TransformerDecoderKG(nn.Module):
     """
-    Transformer Decoder layer.
+    集成了知识图谱（KG）和数据库（DB）信息的 Transformer 解码器。
+    这个模块将堆叠多个 TransformerDecoderLayerKG 层。
 
-    :param int n_heads: the number of multihead attention heads.
-    :param int n_layers: number of transformer layers.
-    :param int embedding_size: the embedding sizes. Must be a multiple of n_heads.
-    :param int ffn_size: the size of the hidden layer in the FFN
-    :param embedding: an embedding matrix for the bottom layer of the transformer.
-        If none, one is created for this encoder.
-    :param float dropout: Dropout used around embeddings and before layer
-        layer normalizations. This is used in Vaswani 2017 and works well on
-        large datasets.
-    :param float attention_dropout: Dropout performed after the multhead attention
-        softmax. This is not used in Vaswani 2017.
-    :param float relu_dropout: Dropout used after the ReLU in the FFN. Not used
-        in Vaswani 2017, but used in Tensor2Tensor.
-    :param int padding_idx: Reserved padding index in the embeddings matrix.
-    :param bool learn_positional_embeddings: If off, sinusoidal embeddings are
-        used. If on, position embeddings are learned from scratch.
-    :param bool embeddings_scale: Scale embeddings relative to their dimensionality.
-        Found useful in fairseq.
-    :param int n_positions: Size of the position embeddings matrix.
+    参数:
+        n_heads (int): 多头注意力的头数。
+        n_layers (int): TransformerDecoderLayerKG 的层数。
+        embedding_size (int): 嵌入维度。必须是 n_heads 的倍数。
+        ffn_size (int): 前馈网络 (FFN) 中隐藏层的大小。
+        vocabulary_size (int): 词汇表大小。 (如果提供了 embedding 参数，这个可能主要用于参考或输出层)。
+        embedding (nn.Embedding): 词嵌入层。如果为 None，则理论上应该在此模块内创建一个。
+                                  (当前代码直接使用传入的 embedding)。
+        dropout (float): 应用于嵌入和层归一化之前的 Dropout 率。
+                         (遵循 Vaswani et al., 2017 的用法)。
+        attention_dropout (float): 多头注意力中 softmax 之后应用的 Dropout 率。
+                                   (Vaswani et al., 2017 未使用)。
+        relu_dropout (float): FFN 中 ReLU (或等效激活函数) 之后应用的 Dropout 率。
+                              (Vaswani et al., 2017 未使用, 但 Tensor2Tensor 中使用)。
+        embeddings_scale (bool): 是否根据嵌入维度缩放嵌入向量 (乘以 sqrt(dim))。
+                                 (在 fairseq 中发现有用)。
+        learn_positional_embeddings (bool): 如果为 True，则位置嵌入从头开始学习。
+                                            如果为 False，则使用固定的正弦/余弦位置嵌入。
+        padding_idx (int, optional): 嵌入矩阵中保留的填充索引。如果词嵌入层已配置此项，则此处为参考。
+        n_positions (int): 位置嵌入矩阵的大小 (即模型能处理的最大序列长度)。
     """
 
     def __init__(
             self,
-            n_heads,
-            n_layers,
-            embedding_size,
-            ffn_size,
-            vocabulary_size,
-            embedding,
-            dropout=0.0,
-            attention_dropout=0.0,
-            relu_dropout=0.0,
-            embeddings_scale=True,
-            learn_positional_embeddings=False,
-            padding_idx=None,
-            n_positions=1024,
+            n_heads: int,
+            n_layers: int,
+            embedding_size: int,
+            ffn_size: int,
+            vocabulary_size: int,  # 注意：如果 embedding 是外部传入的，此参数可能仅作记录
+            embedding: nn.Embedding,  # 通常是预训练或共享的词嵌入层
+            dropout: float = 0.0,
+            attention_dropout: float = 0.0,
+            relu_dropout: float = 0.0,
+            embeddings_scale: bool = True,
+            learn_positional_embeddings: bool = False,
+            padding_idx: int = None,  # 通常词嵌入层会处理 padding_idx
+            n_positions: int = 1024,  # 最大序列长度
     ):
         super().__init__()
         self.embedding_size = embedding_size
         self.ffn_size = ffn_size
         self.n_layers = n_layers
         self.n_heads = n_heads
-        self.dim = embedding_size
+        self.dim = embedding_size  # 嵌入维度，与 embedding_size 相同
         self.embeddings_scale = embeddings_scale
-        self.dropout = nn.Dropout(dropout)  # --dropout
+        self.dropout = nn.Dropout(dropout)  # 通用 Dropout 层
 
-        self.out_dim = embedding_size
+        self.out_dim = embedding_size  # 输出维度与嵌入维度一致
         assert embedding_size % n_heads == 0, \
-            'Transformer embedding size must be a multiple of n_heads'
+            'Transformer 的嵌入维度必须是注意力头数 (n_heads) 的整数倍'
 
+        # 词嵌入层
+        # 假设传入的 embedding 是一个 nn.Embedding 实例
         self.embeddings = embedding
+        # padding_idx 应该在创建 self.embeddings 时指定，例如:
+        # self.embeddings = nn.Embedding(vocabulary_size, embedding_size, padding_idx=padding_idx)
+        # 如果 embedding 是外部传入的，它应该已经配置好了 padding_idx (如果需要)
 
-        # create the positional embeddings
+        # 位置嵌入层
         self.position_embeddings = nn.Embedding(n_positions, embedding_size)
         if not learn_positional_embeddings:
+            # 如果不学习位置嵌入，则创建固定的正弦/余弦位置编码
             create_position_codes(
                 n_positions, embedding_size, out=self.position_embeddings.weight
             )
         else:
+            # 如果学习位置嵌入，则进行正态初始化
             nn.init.normal_(self.position_embeddings.weight, 0, embedding_size ** -0.5)
 
-        # build the model
+        # 构建解码器层
         self.layers = nn.ModuleList()
         for _ in range(self.n_layers):
             self.layers.append(TransformerDecoderLayerKG(
                 n_heads, embedding_size, ffn_size,
                 attention_dropout=attention_dropout,
-                relu_dropout=relu_dropout,
-                dropout=dropout,
+                relu_dropout=relu_dropout,  # 传递给 TransformerDecoderLayerKG 内部的 FFN
+                dropout=dropout,  # 传递给 TransformerDecoderLayerKG 用于残差连接后的dropout
             ))
 
-    def forward(self, input, encoder_state, kg_encoder_output, kg_encoder_mask,
-                db_encoder_output, db_encoder_mask, incr_state=None):
-        encoder_output, encoder_mask = encoder_state
+    def forward(self,
+                input_tokens: torch.Tensor,  # 输入的token IDs, 形状: (batch_size, target_seq_len)
+                encoder_state: tuple,  # 编码器状态，包含编码器输出和掩码
+                kg_encoder_output: torch.Tensor,  # KG编码器输出, 形状: (batch_size, kg_seq_len, embedding_size)
+                kg_encoder_mask: torch.Tensor,  # KG编码器掩码
+                db_encoder_output: torch.Tensor,  # DB编码器输出, 形状: (batch_size, db_seq_len, embedding_size)
+                db_encoder_mask: torch.Tensor,  # DB编码器掩码
+                incremental_state=None  # 用于增量解码（推理时优化），此处未完全实现
+                ):
+        # 从 encoder_state 中解包标准编码器的输出和掩码
+        encoder_output, encoder_mask = encoder_state  # encoder_output: (B, src_len, D), encoder_mask: (B, 1, src_len) or (B, src_len)
 
-        seq_len = input.size(1)
-        positions = input.new(seq_len).long()  # (seq_len)
-        positions = torch.arange(seq_len, out=positions).unsqueeze(0)  # (1, seq_len)
-        tensor = self.embeddings(input)  # (bs, seq_len, embed_dim)
+        target_seq_len = input_tokens.size(1)
+
+        # 1. 创建位置 IDs
+        # positions 张量形状: (target_seq_len) -> (1, target_seq_len)
+        positions = input_tokens.new_empty(target_seq_len, dtype=torch.long)  # 创建一个与input_tokens相同设备和类型的空张量
+        positions = torch.arange(target_seq_len, out=positions).unsqueeze(
+            0)  # (1, target_seq_len), 内容为 [0, 1, ..., target_seq_len-1]
+
+        # 2. 获取词嵌入
+        # embedded_tokens 形状: (batch_size, target_seq_len, embedding_size)
+        embedded_tokens = self.embeddings(input_tokens)
+
+        # 3. (可选) 缩放词嵌入
         if self.embeddings_scale:
-            tensor = tensor * np.sqrt(self.dim)
-        tensor = tensor + self.position_embeddings(positions).expand_as(tensor)
-        tensor = self.dropout(tensor)  # --dropout
+            # 按照 fairseq 的做法，将嵌入乘以其维度的平方根
+            embedded_tokens = embedded_tokens * np.sqrt(self.dim)
 
+        # 4. 添加位置嵌入
+        # position_embeddings(positions) 形状: (1, target_seq_len, embedding_size)
+        # expand_as(embedded_tokens) 将其扩展为 (batch_size, target_seq_len, embedding_size)
+        # tensor 形状: (batch_size, target_seq_len, embedding_size)
+        tensor = embedded_tokens + self.position_embeddings(positions).expand_as(embedded_tokens)
+
+        # 5. 应用 Dropout
+        tensor = self.dropout(tensor)  # 这是 Vaswani 2017 中的 dropout，在输入到 Transformer 层之前
+
+        # 6. 逐层通过 TransformerDecoderLayerKG
         for layer in self.layers:
-            tensor = layer(tensor, encoder_output, encoder_mask, kg_encoder_output, kg_encoder_mask, db_encoder_output,
-                           db_encoder_mask)
+            tensor = layer(
+                x=tensor,
+                encoder_output=encoder_output,
+                encoder_mask=encoder_mask,
+                kg_encoder_output=kg_encoder_output,
+                kg_encoder_mask=kg_encoder_mask,
+                db_encoder_output=db_encoder_output,
+                db_encoder_mask=db_encoder_mask
+            )
 
-        return tensor, None
+        # 返回最终的解码器输出和未来的增量状态 (此处为None)
+        # tensor 形状: (batch_size, target_seq_len, embedding_size)
+        return tensor, None  # `None` 对应于 incr_state，这里简化了，没有实际的增量解码逻辑
+

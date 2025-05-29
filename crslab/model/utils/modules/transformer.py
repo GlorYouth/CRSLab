@@ -56,16 +56,32 @@ def _create_selfattn_mask(target_tensor: torch.Tensor) -> torch.Tensor:
     return mask.unsqueeze(0).expand(batch_size, seq_len, seq_len)
 
 
+def create_position_codes(n_pos: int, dim: int, out: torch.Tensor):
+    """
+    创建正弦/余弦位置编码。
 
-def create_position_codes(n_pos, dim, out):
+    参数:
+        n_pos: 位置数量 (最大序列长度)。
+        dim: 嵌入维度。
+        out: 用于存储位置编码的张量 (通常是 nn.Embedding.weight)。
+    """
+    # 验证 dim 是否为偶数，因为位置编码成对计算 (sin, cos)
+    assert dim % 2 == 0, "Embedding dimension must be even for sinusoidal position codes."
+
     position_enc = np.array([
         [pos / np.power(10000, 2 * j / dim) for j in range(dim // 2)]
         for pos in range(n_pos)
-    ])
+    ])  # shape: (n_pos, dim / 2)
 
-    out.data[:, 0::2] = torch.as_tensor(np.sin(position_enc))
-    out.data[:, 1::2] = torch.as_tensor(np.cos(position_enc))
+    # out 是一个预先分配的张量，例如 nn.Embedding.weight
+    # 将计算出的正弦值赋给偶数索引列
+    out.data[:, 0::2] = torch.from_numpy(np.sin(position_enc)).float()
+    # 将计算出的余弦值赋给奇数索引列
+    out.data[:, 1::2] = torch.from_numpy(np.cos(position_enc)).float()
+
+    # 从计算图中分离，因为这些编码是固定的，不是通过梯度下降学习的 (除非 learn_positional_embeddings=True)
     out.detach_()
+    # 设置为不需要梯度
     out.requires_grad = False
 
 
