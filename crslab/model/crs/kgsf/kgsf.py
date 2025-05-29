@@ -162,16 +162,16 @@ class KGSFModel(BaseModel):
         logger.debug('[完成嵌入初始化]')
 
     def _build_kg_layer(self):
-        from crslab.model.utils.modules.attention import SelfAttentionSeq  # 自注意力模块
+        from crslab.model.utils.modules.attention import SelfAttentionSeqImproved  # 自注意力模块
         from torch_geometric.nn import GCNConv, FastRGCNConv  # 图神经网络层
         # 构建知识图谱相关的编码器和注意力机制
         # 实体编码器
         self.entity_encoder = FastRGCNConv(self.n_entity, self.kg_emb_dim, self.n_relation, self.num_bases)
-        self.entity_self_attn = SelfAttentionSeq(self.kg_emb_dim, self.kg_emb_dim)  # 实体自注意力
+        self.entity_self_attn = SelfAttentionSeqImproved(self.kg_emb_dim, self.kg_emb_dim)  # 实体自注意力
 
         # 概念编码器
         self.word_encoder = GCNConv(self.kg_emb_dim, self.kg_emb_dim)
-        self.word_self_attn = SelfAttentionSeq(self.kg_emb_dim, self.kg_emb_dim)  # 词语自注意力
+        self.word_self_attn = SelfAttentionSeqImproved(self.kg_emb_dim, self.kg_emb_dim)  # 词语自注意力
 
         # 门控机制
         from .modules import GateLayerImproved
