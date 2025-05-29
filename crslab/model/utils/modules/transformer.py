@@ -8,11 +8,13 @@
 # @Email  : francis_kun_zhou@163.com
 
 import math
+from typing import Optional, Union, Tuple
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch_geometric.nn import PositionalEncoding
 
 """Near infinity, useful as a large penalty for scoring when inf is bad."""
 NEAR_INF = 1e20
@@ -156,38 +158,35 @@ class TransformerFFN(nn.Module):
         x = self.lin2(x)
         return x
 
-
-class TransformerEncoderLayer(nn.Module):
-    def __init__(
-            self,
-            n_heads,
-            embedding_size,
-            ffn_size,
-            attention_dropout=0.0,
-            relu_dropout=0.0,
-            dropout=0.0,
-    ):
+class TransformerEncoderLayer(nn.Module): # 保持与之前一致的简化版
+    def __init__(self, n_heads: int, embedding_size: int, ffn_size: int,
+                 attention_dropout: float, relu_dropout: float, dropout: float,
+                 activation_fn: nn.Module = nn.ReLU()): # 新增激活函数参数
         super().__init__()
-        self.dim = embedding_size
-        self.ffn_dim = ffn_size
-        self.attention = MultiHeadAttention(
-            n_heads, embedding_size,
-            dropout=attention_dropout,  # --attention-dropout
-        )
+        self.attention = nn.MultiheadAttention(embedding_size, n_heads, dropout=attention_dropout, batch_first=True)
         self.norm1 = nn.LayerNorm(embedding_size)
-        self.ffn = TransformerFFN(embedding_size, ffn_size, relu_dropout=relu_dropout)
         self.norm2 = nn.LayerNorm(embedding_size)
-        self.dropout = nn.Dropout(p=dropout)
+        self.ffn = nn.Sequential(
+            nn.Linear(embedding_size, ffn_size),
+            activation_fn, # 使用可配置的激活函数
+            nn.Dropout(relu_dropout),
+            nn.Linear(ffn_size, embedding_size),
+        )
+        self.dropout1 = nn.Dropout(dropout) if dropout > 0 else nn.Identity() # 改进 dropout
+        self.dropout2 = nn.Dropout(dropout) if dropout > 0 else nn.Identity() # 改进 dropout
 
-    def forward(self, tensor, mask):
-        tensor = tensor + self.dropout(self.attention(tensor, mask=mask))
-        tensor = _normalize(tensor, self.norm1)
-        tensor = tensor + self.dropout(self.ffn(tensor))
-        tensor = _normalize(tensor, self.norm2)
-        tensor *= mask.unsqueeze(-1).type_as(tensor)
-        return tensor
+    def forward(self, x: torch.Tensor, key_padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        # key_padding_mask: True 表示 padding, MultiheadAttention 的期望格式
+        attended_x, _ = self.attention(x, x, x, key_padding_mask=key_padding_mask)
+        x = self.norm1(x + self.dropout1(attended_x))
+
+        ffn_output = self.ffn(x)
+        x = self.norm2(x + self.dropout2(ffn_output))
+        return x
 
 
+
+# --- 改进后的 TransformerEncoder ---
 class TransformerEncoder(nn.Module):
     """
     Transformer encoder module.
@@ -214,23 +213,23 @@ class TransformerEncoder(nn.Module):
         sequence.
     :param int n_positions: Size of the position embeddings matrix.
     """
-
     def __init__(
             self,
-            n_heads,
-            n_layers,
-            embedding_size,
-            ffn_size,
-            vocabulary_size,
-            embedding=None,
-            dropout=0.0,
-            attention_dropout=0.0,
-            relu_dropout=0.0,
-            padding_idx=0,
-            learn_positional_embeddings=False,
-            embeddings_scale=False,
-            reduction=True,
-            n_positions=1024
+            n_heads: int,
+            n_layers: int,
+            embedding_size: int,
+            ffn_size: int,
+            embedding: Optional[nn.Embedding] = None,
+            vocabulary_size: Optional[int] = None, # 改为可选
+            dropout: float = 0.0,
+            attention_dropout: float = 0.0,
+            relu_dropout: float = 0.0,
+            padding_idx: int = 0,
+            learn_positional_embeddings: bool = False,
+            embeddings_scale: bool = False,
+            reduction: bool = True,
+            n_positions: int = 1024,
+            ffn_activation_fn: nn.Module = nn.ReLU() # 新增 FFN 激活函数
     ):
         super(TransformerEncoder, self).__init__()
 
@@ -238,77 +237,91 @@ class TransformerEncoder(nn.Module):
         self.ffn_size = ffn_size
         self.n_layers = n_layers
         self.n_heads = n_heads
-        self.dim = embedding_size
         self.embeddings_scale = embeddings_scale
         self.reduction = reduction
         self.padding_idx = padding_idx
-        # this is --dropout, not --relu-dropout or --attention-dropout
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity() # 改进 dropout
         self.out_dim = embedding_size
-        assert embedding_size % n_heads == 0, \
-            'Transformer embedding size must be a multiple of n_heads'
 
-        # check input formats:
-        if embedding is not None:
-            assert (
-                    embedding_size is None or embedding_size == embedding.weight.shape[1]
-            ), "Embedding dim must match the embedding size."
+        if embedding_size % n_heads != 0:
+            raise ValueError(
+                f"Transformer embedding_size ({embedding_size}) "
+                f"must be a multiple of n_heads ({n_heads})"
+            )
 
         if embedding is not None:
+            if embedding.embedding_dim != embedding_size:
+                 raise ValueError(
+                    f"Provided embedding dim ({embedding.embedding_dim}) "
+                    f"must match the embedding_size ({embedding_size})."
+                )
             self.embeddings = embedding
         else:
-            assert False
-            assert padding_idx is not None
+            if vocabulary_size is None:
+                raise ValueError(
+                    "vocabulary_size must be provided if embedding is None."
+                )
             self.embeddings = nn.Embedding(
                 vocabulary_size, embedding_size, padding_idx=padding_idx
             )
-            nn.init.normal_(self.embeddings.weight, 0, embedding_size ** -0.5)
+            nn.init.normal_(self.embeddings.weight, mean=0, std=embedding_size ** -0.5)
 
-        # create the positional embeddings
-        self.position_embeddings = nn.Embedding(n_positions, embedding_size)
-        if not learn_positional_embeddings:
-            create_position_codes(
-                n_positions, embedding_size, out=self.position_embeddings.weight
-            )
-        else:
-            nn.init.normal_(self.position_embeddings.weight, 0, embedding_size ** -0.5)
+        self.positional_encoder = PositionalEncoding(
+            embedding_size, n_positions, learn_positional_embeddings
+        )
 
-        # build the model
         self.layers = nn.ModuleList()
         for _ in range(self.n_layers):
             self.layers.append(TransformerEncoderLayer(
                 n_heads, embedding_size, ffn_size,
                 attention_dropout=attention_dropout,
                 relu_dropout=relu_dropout,
-                dropout=dropout,
+                dropout=dropout, # 注意这里传递的是原始的 dropout 值
+                activation_fn=ffn_activation_fn # 传递激活函数
             ))
 
-    def forward(self, input):
+    def forward(self, input_ids: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
-            input data is a FloatTensor of shape [batch, seq_len, dim]
-            mask is a ByteTensor of shape [batch, seq_len], filled with 1 when
-            inside the sequence and 0 outside.
+        :param input_ids: 形状为 [batch, seq_len] 的 LongTensor
+        :return: 如果 reduction=True, 返回 [batch, embedding_size] 的 Tensor。
+                 如果 reduction=False, 返回 ([batch, seq_len, embedding_size], [batch, seq_len]) 的 Tuple。
         """
-        mask = input != self.padding_idx
-        positions = (mask.cumsum(dim=1, dtype=torch.int64) - 1).clamp_(min=0)
-        tensor = self.embeddings(input)
+        # input_ids (batch_size, seq_len)
+        # key_padding_mask: (batch_size, seq_len), True 表示是 padding
+        # attention_mask (for MultiheadAttention): (batch_size, seq_len), True 表示要被 MASK (即 padding)
+        input_mask = (input_ids == self.padding_idx) # True for padding positions
+
+        # positions: (batch_size, seq_len)
+        # 非 padding 位置从 0 开始计数，padding 位置的值可能不重要，因为会被 mask
+        non_pad_mask = ~input_mask # True for non-padding
+        positions = (non_pad_mask.cumsum(dim=1, dtype=torch.int64) - 1).clamp_(min=0)
+        positions.masked_fill_(input_mask, 0) # 将 padding 位置的 position 设为0 (或任何有效索引)
+
+        tensor = self.embeddings(input_ids)
         if self.embeddings_scale:
-            tensor = tensor * np.sqrt(self.dim)
-        tensor = tensor + self.position_embeddings(positions).expand_as(tensor)
-        # --dropout on the embeddings
+            tensor = tensor * (self.embedding_size ** 0.5) # 通常乘以维度的平方根
+
+        tensor = tensor + self.positional_encoder(positions)
         tensor = self.dropout(tensor)
 
-        tensor *= mask.unsqueeze(-1).type_as(tensor)
-        for i in range(self.n_layers):
-            tensor = self.layers[i](tensor, mask)
+        # 将 padding 位置的 tensor 值置为 0 (可选，因为注意力掩码会处理)
+        # 但为了后续的 sum/mean pooling 的正确性，这里处理是好的
+        tensor.masked_fill_(input_mask.unsqueeze(-1), 0.0)
+
+        for layer in self.layers:
+            # TransformerEncoderLayer 的 forward 需要 key_padding_mask
+            # MultiheadAttention 的 key_padding_mask 中 True 代表 padding
+            tensor = layer(tensor, key_padding_mask=input_mask)
 
         if self.reduction:
-            divisor = mask.type_as(tensor).sum(dim=1).unsqueeze(-1).clamp(min=1e-7)
-            output = tensor.sum(dim=1) / divisor
+            # (batch, seq_len, dim) -> (batch, dim)
+            # 只对非 padding 部分进行平均
+            num_non_padding = non_pad_mask.sum(dim=1, keepdim=True).float().clamp(min=1e-7) # (batch, 1)
+            output = tensor.sum(dim=1) / num_non_padding
             return output
         else:
-            output = tensor
-            return output, mask
+            # (batch, seq_len, dim), (batch, seq_len)
+            return tensor, non_pad_mask # 返回 non_pad_mask 可能比原始 input_mask 更有用
 
 
 class TransformerDecoderLayer(nn.Module):
