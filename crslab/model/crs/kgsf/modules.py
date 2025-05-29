@@ -95,96 +95,151 @@ class GateLayerImproved(nn.Module):
 
         return gated_output
 
+
 class TransformerDecoderLayerKG(nn.Module):
+    """
+    带知识图谱（KG）和数据库（DB）集成的 Transformer 解码器层。
+
+    该层包含：
+    1. 自注意力机制 (self-attention)
+    2. 与数据库编码器输出的交叉注意力机制 (encoder-db attention)
+    3. 与知识图谱编码器输出的交叉注意力机制 (encoder-kg attention)
+    4. 与标准编码器输出的交叉注意力机制 (encoder attention)
+    5. 前馈网络 (feed-forward network)
+
+    每个子层后都跟着 Dropout 和 Add & Norm (残差连接 + Layer Normalization)。
+    """
     def __init__(
-            self,
-            n_heads,
-            embedding_size,
-            ffn_size,
-            attention_dropout=0.0,
-            relu_dropout=0.0,
-            dropout=0.0,
+        self,
+        n_heads: int,
+        embedding_size: int,
+        ffn_size: int,
+        attention_dropout: float = 0.0,
+        relu_dropout: float = 0.0, # 通常称为 activation_dropout 或 ffn_dropout
+        dropout: float = 0.0,      # 残差连接后的dropout
     ):
         super().__init__()
-        self.dim = embedding_size
-        self.ffn_dim = ffn_size
+        self.dim = embedding_size  # 嵌入维度
+        self.ffn_dim = ffn_size    # FFN中间层的维度
+
+        # Dropout 层，用于残差连接之后
         self.dropout = nn.Dropout(p=dropout)
 
+        # 1. 自注意力模块
         self.self_attention = MultiHeadAttention(
             n_heads, embedding_size, dropout=attention_dropout
         )
         self.norm1 = nn.LayerNorm(embedding_size)
 
-        self.encoder_attention = MultiHeadAttention(
-            n_heads, embedding_size, dropout=attention_dropout
-        )
-        self.norm2 = nn.LayerNorm(embedding_size)
-
+        # 2. 与DB编码器输出的交叉注意力模块
         self.encoder_db_attention = MultiHeadAttention(
             n_heads, embedding_size, dropout=attention_dropout
         )
         self.norm2_db = nn.LayerNorm(embedding_size)
 
+        # 3. 与KG编码器输出的交叉注意力模块
         self.encoder_kg_attention = MultiHeadAttention(
             n_heads, embedding_size, dropout=attention_dropout
         )
         self.norm2_kg = nn.LayerNorm(embedding_size)
 
+        # 4. 与标准编码器输出的交叉注意力模块
+        self.encoder_attention = MultiHeadAttention(
+            n_heads, embedding_size, dropout=attention_dropout
+        )
+        self.norm2 = nn.LayerNorm(embedding_size)
+
+        # 5. 前馈网络模块
         self.ffn = TransformerFFN(embedding_size, ffn_size, activation_dropout=relu_dropout)
         self.norm3 = nn.LayerNorm(embedding_size)
 
-    def forward(self, x, encoder_output, encoder_mask, kg_encoder_output, kg_encoder_mask, db_encoder_output,
-                db_encoder_mask):
-        decoder_mask = _create_selfattn_mask(x)
-        # first self attn
-        residual = x
-        # don't peak into the future!
-        x = self.self_attention(query=x, mask=decoder_mask)
-        x = self.dropout(x)  # --dropout
-        x = x + residual
-        x = _normalize(x, self.norm1)
+    def forward(
+        self,
+        x: torch.Tensor,                          # 解码器输入, 形状: (batch_size, target_seq_len, embedding_size)
+        encoder_output: torch.Tensor,             # 标准编码器输出, 形状: (batch_size, source_seq_len, embedding_size)
+        encoder_mask: torch.Tensor,               # 标准编码器掩码, 形状: (batch_size, 1, source_seq_len) or (batch_size, source_seq_len)
+        kg_encoder_output: torch.Tensor,          # KG编码器输出, 形状: (batch_size, kg_seq_len, embedding_size)
+        kg_encoder_mask: torch.Tensor,            # KG编码器掩码, 形状: (batch_size, 1, kg_seq_len) or (batch_size, kg_seq_len)
+        db_encoder_output: torch.Tensor,          # DB编码器输出, 形状: (batch_size, db_seq_len, embedding_size)
+        db_encoder_mask: torch.Tensor,            # DB编码器掩码, 形状: (batch_size, 1, db_seq_len) or (batch_size, db_seq_len)
+    ) -> torch.Tensor:
+        """
+        前向传播。
 
+        参数:
+            x: 解码器输入。
+            encoder_output: 标准编码器的输出。
+            encoder_mask: 标准编码器输出的掩码 (通常是padding mask, 1代表有效token, 0代表padding)。
+            kg_encoder_output: 知识图谱编码器的输出。
+            kg_encoder_mask: 知识图谱编码器输出的掩码。
+            db_encoder_output: 数据库编码器的输出。
+            db_encoder_mask: 数据库编码器输出的掩码。
+        返回:
+            torch.Tensor: 解码器层的输出, 形状与x相同。
+        """
+        # --- 1. 自注意力机制 ---
         residual = x
-        x = self.encoder_db_attention(
+        # 创建自注意力掩码，防止看到未来的信息
+        # _create_selfattn_mask 返回的mask中, True表示可见, False表示遮蔽
+        # MultiHeadAttention内部会处理 (mask == 0) 的情况
+        decoder_mask = _create_selfattn_mask(x) # 形状: (batch_size, target_seq_len, target_seq_len)
+
+        # self_attention 期望 mask 的形状是 [B, Q_len, K_len]
+        # 其中被遮蔽的位置（例如未来token或padding）应在MHA内部计算得到 True (mask_fill用)
+        # 如果 decoder_mask 中 False 代表遮蔽, MHA内部 (decoder_mask == False) 即 (decoder_mask == 0)
+        # 会将这些位置标记为 True，然后用 -inf 填充。
+        x_attn = self.self_attention(query=x, key=x, value=x, mask=decoder_mask) # Q,K,V相同；使用因果掩码
+        x = self.dropout(x_attn)
+        x = x + residual
+        x = self.norm1(x)
+
+        # --- 2. 与DB编码器的交叉注意力 ---
+        residual = x
+        # encoder_db_mask: (B, db_seq_len) or (B, 1, db_seq_len)
+        # MHA内部会正确处理padding (mask中0代表padding, 会被MHA转为True来mask_fill)
+        x_attn = self.encoder_db_attention(
             query=x,
             key=db_encoder_output,
             value=db_encoder_output,
-            mask=db_encoder_mask
+            mask=db_encoder_mask  # 使用DB编码器的padding mask
         )
-        x = self.dropout(x)  # --dropout
+        x = self.dropout(x_attn)
         x = residual + x
-        x = _normalize(x, self.norm2_db)
+        x = self.norm2_db(x)
 
+        # --- 3. 与KG编码器的交叉注意力 ---
         residual = x
-        x = self.encoder_kg_attention(
+        x_attn = self.encoder_kg_attention(
             query=x,
             key=kg_encoder_output,
             value=kg_encoder_output,
-            mask=kg_encoder_mask
+            mask=kg_encoder_mask # 使用KG编码器的padding mask
         )
-        x = self.dropout(x)  # --dropout
+        x = self.dropout(x_attn)
         x = residual + x
-        x = _normalize(x, self.norm2_kg)
+        x = self.norm2_kg(x)
 
+        # --- 4. 与标准编码器的交叉注意力 ---
         residual = x
-        x = self.encoder_attention(
+        x_attn = self.encoder_attention(
             query=x,
             key=encoder_output,
             value=encoder_output,
-            mask=encoder_mask
+            mask=encoder_mask     # 使用标准编码器的padding mask
         )
-        x = self.dropout(x)  # --dropout
+        x = self.dropout(x_attn)
         x = residual + x
-        x = _normalize(x, self.norm2)
+        x = self.norm2(x)
 
-        # finally the ffn
+        # --- 5. 前馈网络 ---
         residual = x
-        x = self.ffn(x)
-        x = self.dropout(x)  # --dropout
+        x_ffn = self.ffn(x)
+        x = self.dropout(x_ffn)
         x = residual + x
-        x = _normalize(x, self.norm3)
+        x = self.norm3(x)
 
         return x
+
 
 
 class TransformerDecoderKG(nn.Module):

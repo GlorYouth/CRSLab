@@ -25,18 +25,36 @@ def neginf(dtype):
     if dtype is torch.float16:
         return -NEAR_INF_FP16
     else:
-        return -NEAR_INF
+        return torch.tensor(float('-inf'), dtype=dtype)
 
 
-def _create_selfattn_mask(x):
-    # figure out how many timestamps we need
-    bsz = x.size(0)
-    time = x.size(1)
-    # make sure that we don't look into the future
-    mask = torch.tril(x.new(time, time).fill_(1))
-    # broadcast across batch
-    mask = mask.unsqueeze(0).expand(bsz, -1, -1)
-    return mask
+# 辅助函数：创建解码器自注意力机制的掩码 (causal mask)
+# 这个函数确保解码器在预测当前位置时不能看到未来的信息。
+# 输出的 mask 中，True 代表“保留”，False 代表“遮盖未来信息”。
+# 在 MultiHeadAttention 中，会通过 (mask == 0) 来获取真正要填充 -inf 的位置。
+def _create_selfattn_mask(target_tensor: torch.Tensor) -> torch.Tensor:
+    """
+    为解码器的自注意力机制创建因果掩码 (causal mask)。
+    防止注意力机制看到未来的 token。
+
+    参数:
+        target_tensor (torch.Tensor): 目标序列张量，形状为 (batch_size, seq_len, dim)。
+
+    返回:
+        torch.Tensor: 因果掩码张量，形状为 (batch_size, seq_len, seq_len)。
+                      值为 True 的位置表示允许注意力，值为 False 的位置表示禁止注意力。
+                      在MHA中，通常 (mask == 0) 的位置会被填充为负无穷。
+                      所以这里 True 表示看到，False表示看不到。
+                      MHA内部 (mask == 0) 后，看不到的地方会变成True，然后被masked_fill_。
+    """
+    batch_size, seq_len, _ = target_tensor.size()
+    # 创建一个下三角矩阵 (包括对角线)，值为 True。上三角为 False。
+    # True 表示 token i 可以关注 token j (j<=i)
+    # False 表示 token i 不可以关注 token j (j>i)
+    mask = torch.tril(torch.ones(seq_len, seq_len, device=target_tensor.device, dtype=torch.bool))
+    # 扩展到 batch_size
+    return mask.unsqueeze(0).expand(batch_size, seq_len, seq_len)
+
 
 
 def create_position_codes(n_pos, dim, out):
@@ -56,90 +74,167 @@ def _normalize(tensor, norm_layer):
     size = tensor.size()
     return norm_layer(tensor.view(-1, size[-1])).view(size)
 
-
 class MultiHeadAttention(nn.Module):
-    def __init__(self, n_heads, dim, dropout=.0):
+    """
+    标准的多头注意力机制模块。
+    """
+    def __init__(self, n_heads: int, dim: int, dropout: float = 0.0):
         super(MultiHeadAttention, self).__init__()
-        self.n_heads = n_heads
-        self.dim = dim
+        self.n_heads = n_heads  # 注意力头的数量
+        self.dim = dim          # 输入和输出的维度
 
-        self.attn_dropout = nn.Dropout(p=dropout)  # --attention-dropout
+        # 确保维度可以被头的数量整除
+        assert dim % n_heads == 0, "dim必须能被n_heads整除"
+        self.dim_per_head = dim // n_heads # 每个头的维度
+
+        # 注意力分数计算后的 Dropout
+        self.attn_dropout = nn.Dropout(p=dropout)
+
+        # Query, Key, Value 的线性变换层
         self.q_lin = nn.Linear(dim, dim)
         self.k_lin = nn.Linear(dim, dim)
         self.v_lin = nn.Linear(dim, dim)
-        # TODO: merge for the initialization step
+
+        # 权重初始化 (Xavier Normal)
+        # nn.Linear 默认会初始化偏置（如果bias=True, 默认为True）。
+        # 对于偏置，通常初始化为0，nn.Linear默认的uniform初始化接近0。
+        # 如果想精确设为0：
+        # if self.q_lin.bias is not None: nn.init.zeros_(self.q_lin.bias)
+        # ...以此类推
         nn.init.xavier_normal_(self.q_lin.weight)
         nn.init.xavier_normal_(self.k_lin.weight)
         nn.init.xavier_normal_(self.v_lin.weight)
-        # and set biases to 0
+
+        # 输出前的线性变换层
         self.out_lin = nn.Linear(dim, dim)
-
         nn.init.xavier_normal_(self.out_lin.weight)
+        # if self.out_lin.bias is not None: nn.init.zeros_(self.out_lin.bias)
 
-    def forward(self, query, key=None, value=None, mask=None):
-        # Input is [B, query_len, dim]
-        # Mask is [B, key_len] (selfattn) or [B, key_len, key_len] (enc attn)
+        # 然后在forward中分割，这有时能提高参数加载和计算效率。
+        # 但当前分开定义更清晰。
+
+    def _prepare_head(self, tensor: torch.Tensor) -> torch.Tensor:
+        """
+        将输入张量调整为多头注意力的形式。
+        输入: (batch_size, seq_len, n_heads * dim_per_head)
+        输出: (batch_size * n_heads, seq_len, dim_per_head)
+        """
+        batch_size, seq_len, _ = tensor.size()
+        tensor = tensor.view(batch_size, seq_len, self.n_heads, self.dim_per_head)
+        # (batch_size, n_heads, seq_len, dim_per_head)
+        tensor = tensor.transpose(1, 2).contiguous()
+        # (batch_size * n_heads, seq_len, dim_per_head)
+        tensor = tensor.view(batch_size * self.n_heads, seq_len, self.dim_per_head)
+        return tensor
+
+    def forward(
+        self,
+        query: torch.Tensor,
+        key: Optional[torch.Tensor] = None,
+        value: Optional[torch.Tensor] = None,
+        mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """
+        前向传播。
+
+        参数:
+            query (torch.Tensor): Query张量, 形状 (batch_size, query_len, dim).
+            key (Optional[torch.Tensor]): Key张量, 形状 (batch_size, key_len, dim).
+                                          如果为None, 则为自注意力 (key=query).
+            value (Optional[torch.Tensor]): Value张量, 形状 (batch_size, key_len, dim).
+                                            如果为None, 则为自注意力 (value=query or value=key).
+            mask (Optional[torch.Tensor]): 掩码张量。
+                - 对于自注意力中的因果掩码: 形状通常是 (batch_size, query_len, key_len),
+                  其中 True 表示允许注意力，False 表示禁止（将被填充为-inf）。
+                - 对于padding掩码: 形状通常是 (batch_size, key_len) or (batch_size, 1, key_len),
+                  其中 1 (True) 表示有效token, 0 (False) 表示padding token。
+                  (mask == 0) 会被用于标记需要填充 -inf 的位置。
+
+        返回:
+            torch.Tensor: 注意力机制的输出, 形状 (batch_size, query_len, dim).
+        """
         batch_size, query_len, dim = query.size()
         assert dim == self.dim, \
-            f'Dimensions do not match: {dim} query vs {self.dim} configured'
-        assert mask is not None, 'Mask is None, please specify a mask'
-        n_heads = self.n_heads
-        dim_per_head = dim // n_heads
-        scale = math.sqrt(dim_per_head)
+            f'输入张量的维度 ({dim}) 与模块配置的维度 ({self.dim}) 不匹配'
+        # mask 在实际应用中通常是必须的，尤其是对于padding或因果自注意力
+        # assert mask is not None, 'Mask 不能为 None, 请指定一个有效的 mask'
+        # 根据原代码，mask可能为None，这里注释掉强制检查，但推荐始终提供mask
 
-        def prepare_head(tensor):
-            # input is [batch_size, seq_len, n_heads * dim_per_head]
-            # output is [batch_size * n_heads, seq_len, dim_per_head]
-            bsz, seq_len, _ = tensor.size()
-            tensor = tensor.view(batch_size, tensor.size(1), n_heads, dim_per_head)
-            tensor = tensor.transpose(1, 2).contiguous().view(
-                batch_size * n_heads,
-                seq_len,
-                dim_per_head
-            )
-            return tensor
+        # 计算缩放因子
+        scale = math.sqrt(self.dim_per_head)
 
-        # q, k, v are the transformed values
+        # 1. 处理自注意力的情况 (key/value 未提供)
         if key is None and value is None:
-            # self attention
+            # 自注意力机制
             key = value = query
         elif value is None:
-            # key and value are the same, but query differs
-            # self attention
+            # 通常意味着 key 和 value 相同 (例如 encoder-decoder attention 中 encoder_output作为K和V)
             value = key
-        _, key_len, dim = key.size()
 
-        q = prepare_head(self.q_lin(query))
-        k = prepare_head(self.k_lin(key))
-        v = prepare_head(self.v_lin(value))
+        # 断言 key 和 value 不为空 (经过上面的处理后)
+        assert key is not None and value is not None
+        _, key_len, _ = key.size() # 获取 key 的序列长度
 
-        dot_prod = q.div_(scale).bmm(k.transpose(1, 2))
-        # [B * n_heads, query_len, key_len]
-        attn_mask = (
-            (mask == 0)
-                .view(batch_size, 1, -1, key_len)
-                .repeat(1, n_heads, 1, 1)
-                .expand(batch_size, n_heads, query_len, key_len)
-                .view(batch_size * n_heads, query_len, key_len)
-        )
-        assert attn_mask.shape == dot_prod.shape
-        dot_prod.masked_fill_(attn_mask, neginf(dot_prod.dtype))
+        # 2. 线性变换并调整形状以适应多头
+        q = self.q_lin(query)       # (batch_size, query_len, dim)
+        k = self.k_lin(key)         # (batch_size, key_len, dim)
+        v = self.v_lin(value)       # (batch_size, key_len, dim)
 
-        attn_weights = F.softmax(dot_prod, dim=-1).type_as(query)
-        attn_weights = self.attn_dropout(attn_weights)  # --attention-dropout
+        q_prepared = self._prepare_head(q)  # (batch_size * n_heads, query_len, dim_per_head)
+        k_prepared = self._prepare_head(k)  # (batch_size * n_heads, key_len, dim_per_head)
+        v_prepared = self._prepare_head(v)  # (batch_size * n_heads, key_len, dim_per_head)
 
-        attentioned = attn_weights.bmm(v)
-        attentioned = (
-            attentioned.type_as(query)
-                .view(batch_size, n_heads, query_len, dim_per_head)
-                .transpose(1, 2).contiguous()
-                .view(batch_size, query_len, dim)
-        )
+        # 3. 计算注意力分数 (Scaled Dot-Product Attention)
+        # (batch_size * n_heads, query_len, dim_per_head) @ (batch_size * n_heads, dim_per_head, key_len)
+        # -> (batch_size * n_heads, query_len, key_len)
+        dot_prod = torch.bmm(q_prepared, k_prepared.transpose(1, 2)) / scale
 
+        # 4. 应用掩码 (如果提供)
+        if mask is not None:
+            # attn_mask 的形状需要是 (batch_size * n_heads, query_len, key_len)
+            # mask_fill_ 的条件是 True 的地方被填充。
+            # 我们希望 padding (mask中为0) 或未来token (causal mask中为0或False) 的位置被填充。
+            # 所以条件是 (mask_input == 0) 或 (mask_input == False)
+
+            # 处理 padding mask (B, K_len) 或 (B, 1, K_len)
+            if mask.dim() == 2: # (B, K_len)
+                attn_mask_logical = (mask == 0).unsqueeze(1).unsqueeze(2) # (B, 1, 1, K_len)
+            # 处理 causal mask or combined mask (B, Q_len, K_len)
+            elif mask.dim() == 3: # (B, Q_len, K_len)
+                attn_mask_logical = (mask == 0).unsqueeze(1) # (B, 1, Q_len, K_len)
+            else:
+                raise ValueError(f"不支持的mask维度: {mask.shape}")
+
+            # 扩展到多头和query_len (如果需要)
+            # (B, 1, Q_len for causal or 1 for padding, K_len) -> (B, H, Q_len, K_len)
+            attn_mask_expanded = attn_mask_logical.expand(batch_size, self.n_heads, query_len, key_len)
+            attn_mask_final = attn_mask_expanded.reshape(batch_size * self.n_heads, query_len, key_len)
+
+            assert attn_mask_final.shape == dot_prod.shape, \
+                f"掩码形状 {attn_mask_final.shape} 与注意力分数形状 {dot_prod.shape} 不匹配"
+            dot_prod.masked_fill_(attn_mask_final, neginf(dot_prod.dtype))
+
+        # 5. 计算注意力权重 (Softmax)
+        attn_weights = F.softmax(dot_prod, dim=-1) # 在 key_len 维度上 softmax
+        attn_weights = self.attn_dropout(attn_weights) # 应用 dropout
+
+        # 6. 加权求和 Value
+        # (batch_size * n_heads, query_len, key_len) @ (batch_size * n_heads, key_len, dim_per_head)
+        # -> (batch_size * n_heads, query_len, dim_per_head)
+        attentioned = torch.bmm(attn_weights, v_prepared)
+
+        # 7. 恢复形状
+        # (batch_size * n_heads, query_len, dim_per_head) -> (batch_size, n_heads, query_len, dim_per_head)
+        attentioned = attentioned.view(batch_size, self.n_heads, query_len, self.dim_per_head)
+        # (batch_size, query_len, n_heads, dim_per_head)
+        attentioned = attentioned.transpose(1, 2).contiguous()
+        # (batch_size, query_len, dim)
+        attentioned = attentioned.view(batch_size, query_len, self.dim)
+
+        # 8. 输出前的线性变换
         out = self.out_lin(attentioned)
 
         return out
-
 
 
 class TransformerFFN(nn.Module):
