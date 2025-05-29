@@ -14,7 +14,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import PositionalEncoding
 
 """Near infinity, useful as a large penalty for scoring when inf is bad."""
 NEAR_INF = 1e20
@@ -221,6 +220,94 @@ class TransformerEncoderLayer(nn.Module): # 保持与之前一致的简化版
         return x
 
 
+class StandardPositionalEncoding(nn.Module):
+    """
+    标准的Transformer位置编码模块。
+    既可以处理可学习的位置编码，也可以处理固定的正弦/余弦位置编码。
+
+    :param int embedding_size: 词嵌入的维度 (d_model)。
+    :param int n_positions: 最大序列长度 (max_len)。
+    :param bool learnable: 如果为True，则位置编码是可学习的参数；
+                                 如果为False，则使用固定的正弦/余弦编码。
+    """
+
+    def __init__(self, embedding_size: int, n_positions: int = 1024, learnable: bool = False):
+        super().__init__()
+        self.learnable = learnable
+        self.embedding_size = embedding_size
+        self.n_positions = n_positions
+
+        if self.learnable:
+            # 如果是可学习的位置编码，创建一个 Embedding 层作为查找表
+            self.embedding = nn.Embedding(self.n_positions, self.embedding_size)
+            # 使用均值为0，标准差为 embedding_size^-0.5 的正态分布初始化
+            nn.init.normal_(self.embedding.weight, mean=0, std=self.embedding_size ** -0.5)
+        else:
+            # 如果是固定的正弦/余弦编码，预先计算权重并注册为缓冲区
+            sinusoidal_weights = self._get_sinusoidal_embeddings()
+            # register_buffer 会将张量注册到模块，使其可以被 state_dict 追踪，
+            # 并且会自动移动到正确的设备 (cpu/gpu)，但不会被视为模型参数。
+            self.register_buffer('sinusoidal_weights', sinusoidal_weights)
+            # 在这种情况下，我们不需要一个 nn.Embedding 层
+            self.embedding = None # 明确表示不使用 nn.Embedding
+
+    def _get_sinusoidal_embeddings(self) -> torch.Tensor:
+        """
+        生成正弦/余弦位置编码。
+        参考 "Attention Is All You Need" 论文中的公式。
+        PE(pos, 2i) = sin(pos / 10000^(2i/d_model))
+        PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))
+
+        输出形状: [n_positions, embedding_size]
+        """
+        d_model = self.embedding_size
+        # 初始化一个形状为 [n_positions, d_model] 的零张量，用于存放位置编码
+        pe = torch.zeros(self.n_positions, d_model)
+
+        # 创建一个表示位置的张量，形状为 [n_positions, 1] (例如 [[0], [1], ..., [n_positions-1]])
+        position = torch.arange(0, self.n_positions, dtype=torch.float).unsqueeze(1)
+
+        # 计算除法项 div_term，对应于公式中的 1 / (10000^(2i/d_model))
+        # _2i 对应公式中的 2i，从 0 开始，步长为 2
+        # div_term 的长度将是 ceil(d_model / 2)
+        _2i = torch.arange(0, d_model, 2, dtype=torch.float)
+        div_term = torch.exp(_2i * (-math.log(10000.0) / d_model))
+
+        # 计算偶数索引位置(0, 2, 4, ...)的正弦编码
+        # pe[:, 0::2] 会选择 ceil(d_model / 2) 列
+        pe[:, 0::2] = torch.sin(position * div_term)
+
+        # 计算奇数索引位置(1, 3, 5, ...)的余弦编码
+        # pe[:, 1::2] 会选择 floor(d_model / 2) 列
+        # 因此，对于 div_term，我们只需要其前 d_model // 2 个元素来与这些列相乘
+        pe[:, 1::2] = torch.cos(position * div_term[:d_model // 2])
+
+        return pe
+
+    def forward(self, positions: torch.Tensor) -> torch.Tensor:
+        """
+        前向传播函数。
+
+        :param positions: 形状为 [batch_size, seq_len] 的张量，包含位置索引
+                          (整数，范围从 0 到 n_positions-1)。
+        :return: 形状为 [batch_size, seq_len, embedding_size] 的位置编码张量。
+        """
+        if self.learnable:
+            # 如果是可学习的，通过 embedding 层查找对应位置的编码
+            # 确保 self.embedding 不为 None (在 learnable=True 时被初始化)
+            if self.embedding is None:
+                raise RuntimeError("Positional encoding is learnable, but nn.Embedding layer was not initialized.")
+            return self.embedding(positions)
+        else:
+            # 如果是固定的，直接从预计算的 sinusoidal_weights 中提取
+            # sinusoidal_weights 的形状是 [n_positions, embedding_size]
+            # positions 的形状是 [batch_size, seq_len]
+            # 我们期望输出形状是 [batch_size, seq_len, embedding_size]
+            # 直接使用 tensor indexing 即可实现
+            if self.sinusoidal_weights is None: # 理论上不应该发生，因为 __init__ 会初始化它
+                 raise RuntimeError("Positional encoding is fixed, but sinusoidal_weights buffer was not initialized.")
+            return self.sinusoidal_weights[positions]
+
 
 # --- 改进后的 TransformerEncoder ---
 class TransformerEncoder(nn.Module):
@@ -302,7 +389,7 @@ class TransformerEncoder(nn.Module):
             )
             nn.init.normal_(self.embeddings.weight, mean=0, std=embedding_size ** -0.5)
 
-        self.positional_encoder = PositionalEncoding(
+        self.positional_encoder = StandardPositionalEncoding(
             embedding_size, n_positions, learn_positional_embeddings
         )
 
