@@ -25,16 +25,15 @@ import torch
 import torch.nn.functional as F
 from loguru import logger  # 日志库
 from torch import nn
-from torch_geometric.nn import GCNConv, FastRGCNConv  # 图神经网络层
+
 # 导入 AMP 相关模块
 from torch.cuda.amp import autocast, GradScaler  # 用于混合精度训练
 
 from crslab.config import MODEL_PATH  # 模型路径配置
 from crslab.model.base import BaseModel  # 模型基类
 from crslab.model.utils.functions import edge_to_pyg_format  # 边转换工具
-from crslab.model.utils.modules.attention import SelfAttentionSeq  # 自注意力模块
 from crslab.model.utils.modules.transformer import TransformerEncoder  # Transformer 编码器
-from .modules import GateLayer, TransformerDecoderKG  # 自定义模块
+from .modules import TransformerDecoderKG  # 自定义模块
 from .resources import resources  # 资源文件
 
 
@@ -163,6 +162,8 @@ class KGSFModel(BaseModel):
         logger.debug('[完成嵌入初始化]')
 
     def _build_kg_layer(self):
+        from crslab.model.utils.modules.attention import SelfAttentionSeq  # 自注意力模块
+        from torch_geometric.nn import GCNConv, FastRGCNConv  # 图神经网络层
         # 构建知识图谱相关的编码器和注意力机制
         # 实体编码器
         self.entity_encoder = FastRGCNConv(self.n_entity, self.kg_emb_dim, self.n_relation, self.num_bases)
@@ -173,7 +174,8 @@ class KGSFModel(BaseModel):
         self.word_self_attn = SelfAttentionSeq(self.kg_emb_dim, self.kg_emb_dim)  # 词语自注意力
 
         # 门控机制
-        self.gate_layer = GateLayer(self.kg_emb_dim)
+        from .modules import GateLayerImproved
+        self.gate_layer = GateLayerImproved(self.kg_emb_dim)
 
         logger.debug('[完成知识图谱层构建]')
 
